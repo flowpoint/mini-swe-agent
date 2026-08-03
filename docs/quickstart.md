@@ -1,134 +1,87 @@
-# Quick start
+# Quickstart
 
-!!! tip "Installation Options"
+This fork runs mini-SWE-agent against one local llama.cpp server. No cloud account, API key, setup wizard, or provider configuration is required.
 
-    === "pip"
+## 1. Install the client
 
-        Use pip to install `mini` in your current environment:
+Requirements are Linux, Python 3.11 or newer, and a separately installed `llama-server` binary.
 
-        ```bash
-        pip install mini-swe-agent
-        ```
+From this checkout:
 
-        And try our command line interface
+```bash
+python -m pip install .
+```
 
-        ```bash
-        mini  # CLI
-        mini-extra  # extra utilities
-        ```
+For an editable development installation:
 
-    === "uv (isolated)"
+```bash
+python -m pip install -e '.[dev]'
+```
 
-        Use `uv`/`uvx` ([installation](https://docs.astral.sh/uv/getting-started/installation/)) to directly run the `mini` CLI.
-        Use this if you're only interested in the CLI but don't need python bindings (`mini` will be installed in an anonymous virtual environment).
+## 2. Start llama.cpp
 
-        Quickly install + run:
+Choose a GGUF model with a chat template and start the server in another terminal:
 
-        ```bash
-        uvx mini-swe-agent  # CLI
-        uvx --from mini-swe-agent mini-extra  # extra utilities
-        ```
+```bash
+llama-server \
+  --model /path/to/model.gguf \
+  --alias local \
+  --host 127.0.0.1 \
+  --port 8080
+```
 
-        Permanently install
+`--alias local` must match the default `model_name: local`. The client uses `http://127.0.0.1:8080/v1/chat/completions` so llama.cpp can apply the model's chat template.
 
-        ```bash
-        uv tool install mini-swe-agent
-        # then
-        mini  # CLI
-        mini-extra  # extra utilities
-        ```
+## 3. Run mini-SWE-agent
 
-    === "pipx (isolated)"
+Change into the repository the agent should modify, then run:
 
-        Use pipx ([installation](https://pipx.pypa.io/stable/installation/)) to directly run the `mini` CLI.
-        Use this if you're only interested in the CLI but don't need python bindings (`mini` will be installed in an anonymous virtual environment).
+```bash
+mini --task "Find the cause of the failing tests and fix it"
+```
 
-        Quick install + run:
+The default `confirm` mode asks before every shell action. Use `--yolo` only in a trusted, isolated checkout:
 
-        ```bash
-        # CLI
-        pipx run mini-swe-agent
-        # Extra utilities
-        pipx run --spec mini-swe-agent mini-extra
-        ```
+```bash
+mini --yolo --task "Add tests for the configuration loader"
+```
 
-        or for a persistent installation (recommended):
+The model may include a short explanation, but every action must contain exactly one fenced `bash` block. Commands run in the current local shell environment with your user's permissions.
 
-        ```bash
-        pipx install mini-swe-agent
-        # then
-        mini  # CLI
-        mini-extra  # extra utilities
-        ```
+## Change local model settings
 
-        If the invocation doesn't immediately work, you might need to run `pipx ensurepath`.
+The packaged `mini.yaml` already selects the llama.cpp adapter with deterministic generation. To retain that base and add command-line overrides:
 
-    === "From source/dev"
+```bash
+mini \
+  -c mini.yaml \
+  -c model.base_url=http://127.0.0.1:8080/v1 \
+  -c model.model_name=local \
+  -c model.model_kwargs.max_tokens=2048 \
+  -t "Inspect the parser"
+```
 
-        For development or if you want to customize the agent:
+When `-c` is supplied, list `mini.yaml` first if subsequent `key=value` items are only overrides. A complete custom YAML file can instead be loaded with:
 
-        ```bash
-        git clone https://github.com/SWE-agent/mini-swe-agent.git
-        cd mini-swe-agent
-        pip install -e .
-        ```
+```bash
+mini -c /path/to/local.yaml -t "Run the focused tests"
+```
 
-        Then run:
+See [Model setup](models/quickstart.md) for every adapter field and [YAML configuration](advanced/yaml_configuration.md) for merge behavior and agent limits.
 
-        ```bash
-        mini  # CLI
-        mini-extra  # extra utilities
-        ```
+## Optional SWE-bench commands
 
-        Or pick a [run script](https://github.com/SWE-agent/mini-swe-agent/tree/main/src/minisweagent/run):
+Normal agent use does not install or import `datasets`. Add it only for SWE-bench:
 
-        ```bash
-        python src/minisweagent/run/hello_world.py
-        ```
+```bash
+python -m pip install 'mini-swe-agent[swebench]'
+mini-extra swebench --help
+```
 
-        If you are planning to contribute, please also install the dev dependencies
-        and `pre-commit` hooks:
+SWE-bench execution also needs the benchmark's container/runtime prerequisites. Without the extra, the command exits with a concise installation hint.
 
-        ```bash
-        pip install -e '.[dev]'
-        pip install pre-commit && pre-commit install
-        ```
+## Important limits
 
-        To check your installation, you can run `pytest -n auto` in the root folder.
-        This should run all tests in parallel (should take ~3min to run).
+Only Linux, synchronous non-streaming Chat Completions, text messages, and fenced `bash` actions are supported. There is no provider fallback, native tool calling, multimodal input, automatic model discovery, or monetary cost accounting. The trajectory still records the response, token usage, llama.cpp timings, timestamp, and `cost: 0.0`.
 
-        Note that there are still some extra dependencies that are not installed by default
-        (basically anything that is in an `.../extra/...` folder).
-        If you truly want to get the maximal package, you can run `pip install -e '.[full]'`
-
-!!! note "Changelog"
-
-    Please see the [github release notes](https://github.com/SWE-agent/mini-swe-agent/releases) for recent changes.
-
-!!! info "Upgrading to v2?"
-
-    Check out our [v2 migration guide](advanced/v2_migration.md) for all the changes and how to update your code.
-
-!!! example "Example Prompts"
-
-    Try mini-SWE-agent with these example prompts:
-
-    - Implement a Sudoku solver in python in the `sudoku` folder. Make sure the codebase is modular and well tested with pytest.
-    - Please run pytest on the current project, discover failing unittests and help me fix them. Always make sure to test the final solution.
-    - Help me document & type my codebase by adding short docstrings and type hints.
-
-## Models
-
-!!! note "Models should be set up the first time you run `mini`"
-
-    * If you missed the setup wizard, just run `mini-extra config setup`
-    * For more information, please check the [model setup quickstart](models/quickstart.md).
-    * If you want to use local models, please check this [guide](models/local_models.md).
-
-    Tip: Please always include the provider in the model name, e.g., `anthropic/claude-...`.
-
-!!! success "Which model to use?"
-
-    We recommend using `anthropic/claude-opus-4-6-20260205` for most tasks.
-    For openai models, we recommend using `openai/gpt-5.4` or `openai/gpt-5.4-mini`.
-    You can check scores of different models at our [SWE-bench (bash-only)](https://swebench.com) leaderboard.
+--8<-- "docs/_footer.md"

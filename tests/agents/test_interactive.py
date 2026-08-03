@@ -7,14 +7,7 @@ import yaml
 
 from minisweagent.agents.interactive import InteractiveAgent
 from minisweagent.environments.local import LocalEnvironment
-from minisweagent.models.test_models import (
-    DeterministicModel,
-    DeterministicResponseAPIToolcallModel,
-    DeterministicToolcallModel,
-    make_output,
-    make_response_api_output,
-    make_toolcall_output,
-)
+from minisweagent.models.test_models import DeterministicModel, make_output
 
 
 @contextmanager
@@ -33,22 +26,10 @@ def mock_prompts(side_effect):
             yield
 
 
-# --- Helper functions to abstract message format differences ---
-
-
 def get_text(msg: dict) -> str:
-    """Extract text content from a message regardless of format."""
+    """Extract supported text content from a message."""
     content = msg.get("content")
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list) and content:
-        return content[0].get("text", "")
-    return ""
-
-
-# --- Model factory functions ---
+    return content if isinstance(content, str) else ""
 
 
 def make_text_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> DeterministicModel:
@@ -56,54 +37,9 @@ def make_text_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> Det
     return DeterministicModel(outputs=[make_output(content, actions) for content, actions in outputs_spec], **kwargs)
 
 
-def make_tc_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> DeterministicToolcallModel:
-    """Create a DeterministicToolcallModel from a list of (content, actions) tuples."""
-    outputs = []
-    for i, (content, actions) in enumerate(outputs_spec):
-        tc_actions = []
-        tool_calls = []
-        for j, action in enumerate(actions):
-            tool_call_id = f"call_{i}_{j}"
-            tc_actions.append({"command": action["command"], "tool_call_id": tool_call_id})
-            tool_calls.append(
-                {
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {"name": "bash", "arguments": f'{{"command": "{action["command"]}"}}'},
-                }
-            )
-        outputs.append(make_toolcall_output(content, tool_calls, tc_actions))
-    return DeterministicToolcallModel(outputs=outputs, **kwargs)
-
-
-def make_response_api_model(
-    outputs_spec: list[tuple[str, list[dict]]], **kwargs
-) -> DeterministicResponseAPIToolcallModel:
-    """Create a DeterministicResponseAPIToolcallModel from a list of (content, actions) tuples."""
-    outputs = []
-    for i, (content, actions) in enumerate(outputs_spec):
-        api_actions = []
-        for j, action in enumerate(actions):
-            tool_call_id = f"call_resp_{i}_{j}"
-            api_actions.append({"command": action["command"], "tool_call_id": tool_call_id})
-        outputs.append(make_response_api_output(content, api_actions))
-    return DeterministicResponseAPIToolcallModel(outputs=outputs, **kwargs)
-
-
-def _make_model(outputs: list[tuple[str, list[dict]]], **kwargs) -> DeterministicModel:
-    """Create a DeterministicModel from a list of (content, actions) tuples.
-
-    Kept for backward compatibility with tests that don't need parametrization.
-    """
-    return make_text_model(outputs, **kwargs)
-
-
-# --- Fixtures ---
-
-
 @pytest.fixture
 def default_config():
-    """Load default agent config from config/default.yaml"""
+    """Load the default fenced-text agent configuration."""
     config_path = Path("src/minisweagent/config/default.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
@@ -111,23 +47,8 @@ def default_config():
 
 
 @pytest.fixture
-def toolcall_config():
-    """Load toolcall agent config from config/mini.yaml"""
-    config_path = Path("src/minisweagent/config/mini.yaml")
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    return config["agent"]
-
-
-@pytest.fixture(params=["text", "toolcall", "response_api"])
-def model_factory(request, default_config, toolcall_config):
-    """Parametrized fixture that returns (factory_fn, config) for all three model types."""
-    if request.param == "text":
-        return make_text_model, default_config
-    elif request.param == "toolcall":
-        return make_tc_model, toolcall_config
-    else:  # response_api
-        return make_response_api_model, toolcall_config
+def model_factory(default_config):
+    return make_text_model, default_config
 
 
 def test_successful_completion_with_confirmation(model_factory):

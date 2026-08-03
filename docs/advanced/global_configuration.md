@@ -1,139 +1,59 @@
-# Global configuration
+# Runtime environment configuration
 
-!!! abstract "Configuring mini"
+Most behavior belongs in [YAML configuration](yaml_configuration.md). This page lists the small set of process environment variables still used by the local fork. There is no setup wizard or credential `.env` loader.
 
-    * This guide shows how to configure the `mini` agent's global settings (API keys, default model, etc.).
-      Basically anything that is set as environment variables or similar.
-    * You should already be familiar with the [quickstart guide](../quickstart.md).
-    * For more agent specific settings, see the [yaml configuration file guide](yaml_configuration.md).
+## Supported variables
 
-!!! tip "Setting up models"
+| Variable | Purpose |
+| --- | --- |
+| `MSWEA_MODEL_NAME` | Fallback llama.cpp alias when no CLI or YAML `model_name` is set. The packaged config already sets `local`. |
+| `MSWEA_MINI_CONFIG_PATH` | Replace the implicit `mini.yaml` path used when no `-c` option is supplied. |
+| `MSWEA_CONFIG_DIR` | Add a directory searched for named YAML configuration files. |
+| `MSWEA_GLOBAL_CONFIG_DIR` | Change the Linux directory used for the default trajectory and inspector state. |
+| `MSWEA_GLOBAL_CALL_LIMIT` | Bound model calls across agent instances in the current Python process; `0` disables it. |
+| `MSWEA_SILENT_STARTUP` | Suppress the package startup banner when set to a non-empty value. |
+| `MSWEA_INSPECTOR_STYLE_PATH` | Select an alternate trajectory-inspector stylesheet. |
 
-    Setting up models is also covered in the [quickstart guide](../quickstart.md).
-
-## Setting global configuration
-
-All global configuration can be either set as environment variables, or in the `.env` file (the exact location is printed when you run `mini`).
-Environment variables take precedence over variables set in the `.env` file.
-
-We provide several helper functions to update the global configuration.
-
-For example, to set the default model and API keys, you can run:
+Set variables for the process that launches `mini`:
 
 ```bash
-mini-extra config setup
+MSWEA_MINI_CONFIG_PATH=/path/to/local.yaml \
+MSWEA_GLOBAL_CALL_LIMIT=100 \
+mini --task "Run the focused tests"
 ```
 
-or to update specific settings:
+For repeatable runs, prefer a checked-in, secret-free YAML file over shell startup files.
 
-```
-mini-extra config set KEY VALUE
-# e.g.,
-mini-extra config set MSWEA_MODEL_NAME "anthropic/claude-sonnet-4-5-20250929"
-mini-extra config set ANTHROPIC_API_KEY "sk-..."
-```
+## Precedence
 
-or to unset a key:
+For the model alias, an explicit CLI `--model` value wins over YAML, and YAML wins over `MSWEA_MODEL_NAME`. Command-line `-c` specifications are recursively merged in order. If any `-c` is present, include `mini.yaml` first when later entries are only overrides:
 
 ```bash
-mini-extra config unset KEY
-# e.g.,
-mini-extra config unset ANTHROPIC_API_KEY
+mini \
+  -c mini.yaml \
+  -c model.model_name=local \
+  -c model.base_url=http://127.0.0.1:8080/v1 \
+  -t "Inspect this project"
 ```
 
-You can also edit the `.env` file directly and we provide a helper function for that:
+`MSWEA_MINI_CONFIG_PATH` changes only the implicit default. It is not added when explicit `-c` options are supplied.
 
-```bash
-mini-extra config edit
+## Limits
+
+Use per-agent `step_limit` and `wall_time_limit_seconds` for normal runs. `MSWEA_GLOBAL_CALL_LIMIT` is useful when several agents share one Python process.
+
+`MSWEA_GLOBAL_COST_LIMIT` still exists for trajectory compatibility, but local requests always add zero cost. Do not rely on it as a safety limit.
+
+## Paths
+
+The default Linux configuration directory comes from `platformdirs` and is normally:
+
+```text
+~/.config/mini-swe-agent
 ```
 
-To set environment variables (recommended for temporary experimentation or API keys):
+The default `mini` trajectory is `last_mini_run.traj.json` inside that directory. Override it with `mini -o /path/to/run.traj.json` or `agent.output_path` in YAML.
 
-```bash
-export KEY="value"
-# windows:
-setx KEY "value"
-```
+The package may expose a `.env` path for compatibility, but it is not loaded by the local runtime. Do not put credentials there.
 
-## Models, keys, costs
-
-!!! tip "See also"
-
-    Read the [quickstart guide](../quickstart.md) first—it already covers most of this.
-
-```bash
-# Default model name
-# (default: not set)
-MSWEA_MODEL_NAME="anthropic/claude-sonnet-4-5-20250929"
-```
-
-To ignore errors from cost tracking checks (for example for free models), set:
-
-```bash
-# CAREFUL: This can lead to unmanaged spending!
-MSWEA_COST_TRACKING="ignore_errors"
-```
-
-To register extra models to litellm (see [local models](../models/local_models.md) for more details), you can either specify the path in the agent file, or set
-
-```bash
-LITELLM_MODEL_REGISTRY_PATH="/path/to/your/model/registry.json"
-```
-
-Global cost limits:
-
-```bash
-# Global limit on number of model calls (0 = no limit)
-# (default: 0)
-MSWEA_GLOBAL_CALL_LIMIT="100"
-
-# Global cost limit in dollars (0 = no limit)
-# (default: 0)
-MSWEA_GLOBAL_COST_LIMIT="10.00"
-
-# Number of retry attempts for model API calls
-# (default: 10)
-MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT="10"
-```
-
-## Default config files
-
-```bash
-# Set a custom directory for agent config files in addition to the builtin ones
-# This allows to specify them by names
-MSWEA_CONFIG_DIR="/path/to/your/own/config/dir"
-
-# Config path for mini run script
-# (default: package_dir / "config" / "mini.yaml")
-MSWEA_MINI_CONFIG_PATH="/path/to/your/own/config"
-
-# Custom style path for trajectory inspector
-# (default: package_dir / "config" / "inspector.tcss")
-MSWEA_INSPECTOR_STYLE_PATH="/path/to/your/inspector/style.tcss"
-```
-
-### Settings for environments
-
-```bash
-# Path/name to the singularity/apptainer executable
-# (default: "singularity")
-MSWEA_SINGULARITY_EXECUTABLE="singularity"
-
-# Path/name to the docker executable
-# (default: "docker")
-MSWEA_DOCKER_EXECUTABLE="docker"
-
-# Path/name to the bubblewrap executable
-# (default: "bwrap")
-MSWEA_BUBBLEWRAP_EXECUTABLE="bwrap"
-```
-
-## Default run files
-
-```bash
-# Default run script entry point for the main CLI
-# (default: "minisweagent.run.mini")
-MSWEA_DEFAULT_RUN="minisweagent.run.mini"
-```
-
-{% include-markdown "_footer.md" %}
+{% include-markdown "../_footer.md" %}

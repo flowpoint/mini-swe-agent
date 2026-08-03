@@ -18,7 +18,7 @@ from rich.live import Live
 
 from minisweagent import Environment
 from minisweagent.config import builtin_config_dir, get_config_from_spec
-from minisweagent.environments import get_environment
+from minisweagent.environments.docker import DockerEnvironment
 from minisweagent.models import get_model
 from minisweagent.run.benchmarks.utils.batch_progress import RunBatchProgressManager
 from minisweagent.run.benchmarks.utils.common import ProgressTrackingAgent
@@ -45,7 +45,7 @@ Examples:
 
 [bold green]-c swebench.yaml -c model.model_kwargs.temperature=0.5[/bold green]
 
-[bold green]-c swebench.yaml -c agent.max_iterations=50[/bold green]
+[bold green]-c swebench.yaml -c agent.step_limit=50[/bold green]
 """
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "benchmarks" / "swebench.yaml"
@@ -54,7 +54,6 @@ DATASET_MAPPING = {
     "full": "princeton-nlp/SWE-Bench",
     "verified": "princeton-nlp/SWE-Bench_Verified",
     "lite": "princeton-nlp/SWE-Bench_Lite",
-    "multimodal": "princeton-nlp/SWE-Bench_Multimodal",
     "multilingual": "swe-bench/SWE-Bench_Multilingual",
     "smith": "SWE-bench/SWE-smith",
     "_test": "klieret/swe-bench-dummy-test-dataset",
@@ -63,6 +62,20 @@ DATASET_MAPPING = {
 
 app = typer.Typer(rich_markup_mode="rich", add_completion=False)
 _OUTPUT_FILE_LOCK = threading.Lock()
+SWEBENCH_DEPENDENCY_ERROR = (
+    "SWE-bench support requires the optional dependency group:\npip install 'mini-swe-agent[swebench]'"
+)
+
+
+def load_dataset(*args, **kwargs):
+    """Load a dataset without making datasets a core runtime dependency."""
+    try:
+        from datasets import load_dataset as _load_dataset
+    except ModuleNotFoundError as e:
+        if e.name != "datasets":
+            raise
+        raise ModuleNotFoundError(SWEBENCH_DEPENDENCY_ERROR) from e
+    return _load_dataset(*args, **kwargs)
 
 
 def get_swebench_docker_image_name(instance: dict) -> str:
@@ -78,14 +91,12 @@ def get_swebench_docker_image_name(instance: dict) -> str:
 
 def get_sb_environment(config: dict, instance: dict) -> Environment:
     env_config = {**config.get("environment", {})}
-    env_config["environment_class"] = env_config.get("environment_class", "docker")
-    image_name = get_swebench_docker_image_name(instance)
-    if env_config["environment_class"] in ["docker", "swerex_modal"]:
-        env_config["image"] = image_name
-    elif env_config["environment_class"] in ["singularity", "contree"]:
-        env_config["image"] = "docker://" + image_name
+    environment_class = env_config.pop("environment_class", "docker")
+    if environment_class != "docker":
+        raise ValueError("SWE-bench supports only the direct Docker environment")
+    env_config["image"] = get_swebench_docker_image_name(instance)
 
-    env = get_environment(env_config)
+    env = DockerEnvironment(**env_config)
     if startup_command := config.get("run", {}).get("env_startup_command"):
         startup_command = Template(startup_command, undefined=StrictUndefined).render(**instance)
         out = env.execute({"command": startup_command})
@@ -208,22 +219,25 @@ def main(
     output: str = typer.Option("", "-o", "--output", help="Output directory", rich_help_panel="Basic"),
     workers: int = typer.Option(1, "-w", "--workers", help="Number of worker threads for parallel processing", rich_help_panel="Basic"),
     model: str | None = typer.Option(None, "-m", "--model", help="Model to use", rich_help_panel="Basic"),
-    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'anthropic' or 'minisweagent.models.anthropic.AnthropicModel')", rich_help_panel="Advanced"),
+    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'llamacpp')", rich_help_panel="Advanced"),
     redo_existing: bool = typer.Option(False, "--redo-existing", help="Redo existing instances", rich_help_panel="Data selection"),
     config_spec: list[str] = typer.Option([str(DEFAULT_CONFIG_FILE)], "-c", "--config", help=_CONFIG_SPEC_HELP_TEXT, rich_help_panel="Basic"),
-    environment_class: str | None = typer.Option(None, "--environment-class", help="Environment type to use. Recommended are docker or singularity", rich_help_panel="Advanced"),
 ) -> None:
     # fmt: on
+    dataset_path = DATASET_MAPPING.get(subset, subset)
+    logger.info(f"Loading dataset {dataset_path}, split {split}...")
+    try:
+        instances = list(load_dataset(dataset_path, split=split))
+    except ModuleNotFoundError as e:
+        if str(e) != SWEBENCH_DEPENDENCY_ERROR:
+            raise
+        typer.echo(SWEBENCH_DEPENDENCY_ERROR, err=True)
+        raise typer.Exit(code=1) from None
+
     output_path = Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Results will be saved to {output_path}")
     add_file_handler(output_path / "minisweagent.log")
-
-    from datasets import load_dataset
-
-    dataset_path = DATASET_MAPPING.get(subset, subset)
-    logger.info(f"Loading dataset {dataset_path}, split {split}...")
-    instances = list(load_dataset(dataset_path, split=split))
 
     instances = filter_instances(instances, filter_spec=filter_spec, slice_spec=slice_spec, shuffle=shuffle)
     if not redo_existing and (output_path / "preds.json").exists():
@@ -235,7 +249,6 @@ def main(
     logger.info(f"Building agent config from specs: {config_spec}")
     configs = [get_config_from_spec(spec) for spec in config_spec]
     configs.append({
-        "environment": {"environment_class": environment_class or UNSET},
         "model": {"model_name": model or UNSET, "model_class": model_class or UNSET},
     })
     config = recursive_merge(*configs)

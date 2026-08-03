@@ -26,12 +26,9 @@ def test_run_hello_world_end_to_end(local_test_data):
     model_responses = local_test_data["model_responses"]
     expected_observations = local_test_data["expected_observations"]
 
-    with (
-        patch("minisweagent.run.hello_world.LitellmModel") as mock_model_class,
-        patch("os.environ", {"MSWEA_MODEL_NAME": "tardis"}),
-    ):
+    with patch("minisweagent.run.hello_world.LlamaCppModel") as mock_model_class:
         mock_model_class.return_value = _make_model_from_fixture(model_responses)
-        agent = main(task="Blah blah blah")
+        agent = main(task="Blah blah blah", model_name="tardis")
 
     assert agent is not None
     messages = agent.messages

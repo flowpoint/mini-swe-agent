@@ -6,69 +6,31 @@ import yaml
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.exceptions import FormatError
-from minisweagent.models.test_models import (
-    DeterministicModel,
-    DeterministicResponseAPIToolcallModel,
-    DeterministicToolcallModel,
-    make_output,
-    make_response_api_output,
-    make_toolcall_output,
-)
-
-# --- Helper functions to abstract message format differences ---
+from minisweagent.models.test_models import DeterministicModel, make_output
 
 
 def get_text(msg: dict) -> str:
-    """Extract text content from a message regardless of format."""
+    """Extract supported text content from a message."""
     content = msg.get("content")
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list) and content:
-        return content[0].get("text", "")
-    return ""
+    return content if isinstance(content, str) else ""
 
 
 def get_observation_text(msg: dict) -> str:
-    """Extract observation text from a message (handles all formats)."""
-    if msg.get("type") == "function_call_output":
-        return msg.get("output", "")
     return get_text(msg)
 
 
 def is_assistant_message(msg: dict) -> bool:
-    """Check if message is an assistant/response message."""
-    return msg.get("role") == "assistant" or msg.get("object") == "response"
+    return msg.get("role") == "assistant"
 
 
 def is_observation_message(msg: dict) -> bool:
-    """Check if message is an observation message."""
-    if msg.get("type") == "function_call_output":
-        return True
-    if msg.get("role") == "tool":
-        return True
-    if msg.get("role") == "user" and "returncode" in get_text(msg):
-        return True
-    return False
-
-
-# --- Fixtures ---
+    return msg.get("role") == "user" and "returncode" in get_text(msg)
 
 
 @pytest.fixture
 def default_config():
-    """Load default agent config from config/default.yaml"""
+    """Load the default fenced-text agent configuration."""
     config_path = Path("src/minisweagent/config/default.yaml")
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    return config["agent"]
-
-
-@pytest.fixture
-def toolcall_config():
-    """Load toolcall agent config from config/mini.yaml"""
-    config_path = Path("src/minisweagent/config/mini.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
     return config["agent"]
@@ -79,49 +41,9 @@ def make_text_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> Det
     return DeterministicModel(outputs=[make_output(content, actions) for content, actions in outputs_spec], **kwargs)
 
 
-def make_tc_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> DeterministicToolcallModel:
-    """Create a DeterministicToolcallModel from a list of (content, actions) tuples."""
-    outputs = []
-    for i, (content, actions) in enumerate(outputs_spec):
-        tc_actions = []
-        tool_calls = []
-        for j, action in enumerate(actions):
-            tool_call_id = f"call_{i}_{j}"
-            tc_actions.append({"command": action["command"], "tool_call_id": tool_call_id})
-            tool_calls.append(
-                {
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {"name": "bash", "arguments": f'{{"command": "{action["command"]}"}}'},
-                }
-            )
-        outputs.append(make_toolcall_output(content, tool_calls, tc_actions))
-    return DeterministicToolcallModel(outputs=outputs, **kwargs)
-
-
-def make_response_api_model(
-    outputs_spec: list[tuple[str, list[dict]]], **kwargs
-) -> DeterministicResponseAPIToolcallModel:
-    """Create a DeterministicResponseAPIToolcallModel from a list of (content, actions) tuples."""
-    outputs = []
-    for i, (content, actions) in enumerate(outputs_spec):
-        api_actions = []
-        for j, action in enumerate(actions):
-            tool_call_id = f"call_resp_{i}_{j}"
-            api_actions.append({"command": action["command"], "tool_call_id": tool_call_id})
-        outputs.append(make_response_api_output(content, api_actions))
-    return DeterministicResponseAPIToolcallModel(outputs=outputs, **kwargs)
-
-
-@pytest.fixture(params=["text", "toolcall", "response_api"])
-def model_factory(request, default_config, toolcall_config):
-    """Parametrized fixture that returns (factory_fn, config) for all three model types."""
-    if request.param == "text":
-        return make_text_model, default_config
-    elif request.param == "toolcall":
-        return make_tc_model, toolcall_config
-    else:  # response_api
-        return make_response_api_model, toolcall_config
+@pytest.fixture
+def model_factory(default_config):
+    return make_text_model, default_config
 
 
 # --- Tests ---
@@ -459,9 +381,8 @@ def test_empty_actions_handling(model_factory):
     assert agent.n_calls == 2
 
 
-class _FlakyToolcallModel(DeterministicToolcallModel):
-    """Like DeterministicToolcallModel, but raises FormatError (as the real LitellmModel now does
-    on a truncated / no-tool-call turn) for any output marked {"_format_error": True}."""
+class _FlakyTextModel(DeterministicModel):
+    """Raise FormatError for deterministic outputs marked as malformed."""
 
     def query(self, messages, **kwargs):
         self.current_index += 1
@@ -470,41 +391,39 @@ class _FlakyToolcallModel(DeterministicToolcallModel):
             raise FormatError(
                 {
                     "role": "user",
-                    "content": "No tool calls found in the response.",
+                    "content": "No fenced bash action found in the response.",
                     "extra": {"interrupt_type": "FormatError"},
                 }
             )
         return output
 
 
-def test_repeated_format_errors_terminate_cleanly(toolcall_config):
-    """With max_consecutive_format_errors set, a run that keeps producing no-tool-call / truncation
-    turns stops cleanly with exit_status=RepeatedFormatError instead of looping until the budget is
-    gone."""
+def test_repeated_format_errors_terminate_cleanly(default_config):
+    """Repeated malformed fenced-text turns stop cleanly at the configured limit."""
     outputs = [{"_format_error": True} for _ in range(5)]
     agent = DefaultAgent(
-        model=_FlakyToolcallModel(outputs=outputs),
+        model=_FlakyTextModel(outputs=outputs),
         env=LocalEnvironment(),
-        **{**toolcall_config, "max_consecutive_format_errors": 2},
+        **{**default_config, "max_consecutive_format_errors": 2},
     )
     info = agent.run("Test repeated format errors")
     assert info["exit_status"] == "RepeatedFormatError"
     assert agent.n_calls == 2  # stopped at the 2nd consecutive error, didn't burn all 5
 
 
-def test_format_error_counter_resets_on_success(toolcall_config):
-    """A successful tool call between format errors resets the consecutive counter, so isolated
+def test_format_error_counter_resets_on_success(default_config):
+    """A successful fenced-text action between format errors resets the consecutive counter, so isolated
     errors don't accumulate to the termination threshold."""
-    good = make_tc_model([("listing", [{"command": "echo hello"}])]).config.outputs[0]
-    submit = make_tc_model(
+    good = make_text_model([("listing", [{"command": "echo hello"}])]).config.outputs[0]
+    submit = make_text_model(
         [("done", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho ok"}])]
     ).config.outputs[0]
     # error, success (reset), error, submit -> never 2 in a row, so it must NOT terminate early.
     outputs = [{"_format_error": True}, good, {"_format_error": True}, submit]
     agent = DefaultAgent(
-        model=_FlakyToolcallModel(outputs=outputs),
+        model=_FlakyTextModel(outputs=outputs),
         env=LocalEnvironment(),
-        **{**toolcall_config, "max_consecutive_format_errors": 2},
+        **{**default_config, "max_consecutive_format_errors": 2},
     )
     info = agent.run("Test counter reset")
     assert info["exit_status"] == "Submitted"

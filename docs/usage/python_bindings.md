@@ -8,23 +8,22 @@
 ## Hello world
 
 ```python
-import logging
-
-from minisweagent.agents.default import DefaultAgent
+from minisweagent.agents import get_agent
+from minisweagent.config import get_config_from_spec
+from minisweagent.environments import get_environment
 from minisweagent.models import get_model
-from minisweagent.environments.local import LocalEnvironment
 
-logging.basicConfig(level=logging.DEBUG)
-task = "Write a hello world program"
-model_name = "anthropic/claude-sonnet-4-5-20250929"
+config = get_config_from_spec("mini.yaml")
+model = get_model(config=config["model"])
+environment = get_environment(config["environment"], default_type="local")
+agent = get_agent(model, environment, config["agent"], default_type="interactive")
 
-agent = DefaultAgent(
-    get_model(input_model_name=model_name),
-    LocalEnvironment(),
-)
-
-# Run the agent
-agent.run(task)
+try:
+    agent.run("Write a hello world program")
+finally:
+    model.close()
 ```
+
+This uses the packaged `llamacpp` configuration, model alias `local`, and the local Linux shell. Start the matching `llama-server` before running the example.
 
 {% include-markdown "../_footer.md" %}

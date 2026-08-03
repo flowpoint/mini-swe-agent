@@ -50,7 +50,6 @@ def test_swebench_end_to_end(github_test_data, tmp_path, workers, container_exec
             workers=workers,
             filter_spec="swe-agent__test-repo-1",
             config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
-            environment_class="docker",
         )
 
     traj_file_path = package_dir.parent.parent / "tests" / "test_data" / "github_issue.traj.json"
@@ -112,7 +111,7 @@ def test_get_sb_environment_runs_startup_command_as_dict():
     # The startup_command with {{instance_id}} tested the Jinja render as well.
     config = {"run": {"env_startup_command": "echo {{instance_id}}"}}
 
-    with patch("minisweagent.run.benchmarks.swebench.get_environment", return_value=fake_env):
+    with patch("minisweagent.run.benchmarks.swebench.DockerEnvironment", return_value=fake_env):
         get_sb_environment(config, instance)
 
     fake_env.execute.assert_called_once_with({"command": "echo repo1__test1"})
@@ -123,13 +122,20 @@ def test_get_sb_environment_does_not_mutate_shared_config():
     config = {"environment": {"environment_class": "docker"}}
     instance = {"instance_id": "repo1__test1", "image_name": "custom/image:tag"}
 
-    with patch(
-        "minisweagent.run.benchmarks.swebench.get_environment", return_value=MagicMock()
-    ) as mock_get_environment:
+    with patch("minisweagent.run.benchmarks.swebench.DockerEnvironment", return_value=MagicMock()) as mock_docker:
         get_sb_environment(config, instance)
 
-    assert mock_get_environment.call_args.args[0]["image"] == "custom/image:tag"
+    assert mock_docker.call_args.kwargs["image"] == "custom/image:tag"
     assert "image" not in config["environment"]
+
+def test_get_sb_environment_rejects_non_docker_environment():
+    config = {"environment": {"environment_class": "local"}}
+    instance = {"instance_id": "repo1__test1", "image_name": "custom/image:tag"}
+
+    with pytest.raises(ValueError, match="only the direct Docker environment"):
+        get_sb_environment(config, instance)
+
+
 
 
 def test_filter_instances_no_filters():
@@ -401,7 +407,6 @@ def test_redo_existing_true_overwrites_existing(github_test_data, tmp_path, cont
             filter_spec="swe-agent__test-repo-1",
             redo_existing=True,
             config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
-            environment_class="docker",
         )
 
     # Should have new result from deterministic model
@@ -477,7 +482,6 @@ def test_exception_handling_in_agent_run(tmp_path, workers, container_executable
                 workers=workers,
                 filter_spec="swe-agent__test-repo-1",
                 config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
-                environment_class="docker",
             )
 
     # Check that prediction file contains exception information
@@ -520,7 +524,6 @@ def test_different_exception_types(tmp_path, workers, container_executable):
                 workers=workers,
                 filter_spec="swe-agent__test-repo-1",
                 config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
-                environment_class="docker",
             )
 
     # Check trajectory file for correct exception type
@@ -551,7 +554,6 @@ def test_exception_handling_with_progress_manager(tmp_path, container_executable
                 workers=2,  # Use multithreaded to test progress manager
                 filter_spec="swe-agent__test-repo-1",
                 config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
-                environment_class="docker",
             )
 
             # Verify progress manager methods were called

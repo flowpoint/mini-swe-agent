@@ -17,6 +17,12 @@
 
 ## Usage
 
+Install the optional dataset dependency before running either command:
+
+```bash
+python -m pip install 'mini-swe-agent[swebench]'
+```
+
 !!! warning "Docker container availability"
 
     The docker containers for Linux assume an x86 Linux architecture;
@@ -37,7 +43,7 @@
         python src/minisweagent/run/benchmarks/swebench.py --help
         # Example:
         mini-extra swebench \
-            --model anthropic/claude-sonnet-4-5-20250929 \
+            --model local \
             --subset verified \
             --split test \
             --workers 4
@@ -61,7 +67,7 @@
 
         Advanced flags:
 
-        - `--environment-class` - Environment type to use (recommended: `docker` or `singularity`)
+        - `--environment-class` - Environment type to use. This fork supports the packaged `docker` workflow.
 
     === "Single instance (for debugging)"
 
@@ -75,13 +81,13 @@
         mini-extra swebench-single \
             --subset verified \
             --split test \
-            --model anthropic/claude-sonnet-4-5-20250929 \
+            --model local \
             -i sympy__sympy-15599
         # or
         mini-extra swebench-single \
             --subset verified \
             --split test \
-            -m anthropic/claude-sonnet-4-5-20250929 \
+            -m local \
             -i 0  # instance index
         ```
 
@@ -102,7 +108,7 @@
 
         Advanced flags:
 
-        - `--environment-class` - Environment type to use (recommended: `docker` or `singularity`)
+        - `--environment-class` - Environment type to use. This fork supports the packaged `docker` workflow.
         - `--exit-immediately` - Exit immediately when the agent wants to finish instead of prompting (default: `False`)
 
 !!! tip "Evaluating on SWE-bench"
@@ -136,10 +142,10 @@
 
 ## FAQ
 
-> Can I set global cost limits?
+> How can I limit a run?
 
-Yes, you can set global cost limits with the `MSWEA_GLOBAL_CALL_LIMIT` and `MSWEA_GLOBAL_COST_LIMIT` environment variables/global config.
-See [global configuration](../advanced/global_configuration.md) for more details.
+Use `agent.step_limit`, `agent.wall_time_limit_seconds`, or `MSWEA_GLOBAL_CALL_LIMIT`.
+Local inference records zero monetary cost, so `MSWEA_GLOBAL_COST_LIMIT` is not an effective safeguard. See [global configuration](../advanced/global_configuration.md) for details.
 
 > What happens to uncompleted tasks when I abort with KeyboardInterrupt?
 
@@ -166,11 +172,9 @@ from the default of `120` (seconds).
 Try running the docker command manually to see what's going on (it should be printed out in the console).
 Confirm that it's running with `docker ps`, and that you can use `docker exec -it <container-id> ls` to get some output.
 
-> Docker isn't available on my HPC cluster.
+> Docker isn't available on my Linux host.
 
-You can use the singularity/apptainer backend by setting `environment.environment_class` to `singularity`
-in your [agent config file](../advanced/yaml_configuration.md)
-or specify `--environment-class singularity` from the command line
+The packaged SWE-bench workflow requires Docker. Install and configure a Docker-compatible runtime before running the benchmark, or use the normal `mini` command with the local shell outside the benchmark runner.
 
 > Can I run a startup command in the environment?
 
@@ -190,11 +194,11 @@ run:
   env_startup_command: "git clone {{ repo_url }} . --force"
 ```
 
-which might be particularly useful when running with environments like [`bubblewrap`](../reference/environments/bubblewrap.md).
+This is executed inside the configured Docker environment before the agent starts.
 
 > What environment can I use for SWE-bench?
 
-See [this guide](../advanced/environments.md) for more details.
+Use the packaged Docker environment. See [this guide](../advanced/environments.md) for details.
 
 ## Implementation
 

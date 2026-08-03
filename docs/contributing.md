@@ -1,31 +1,53 @@
-# ❤️ Contributing
+# Contributing
 
-We happily accept contributions!
+Contributions should preserve the fork's narrow runtime: Linux, Python 3.11+, one local llama.cpp server, synchronous text Chat Completions, and fenced bash actions.
 
-## Areas of help
+## Good contributions
 
-- Documentation, examples, tutorials, etc. In particular, we're looking for
-    - examples of how this library is used in the wild
-    - additional examples for the [cookbook](advanced/cookbook.md)
-- Support for more models (anything where `litellm` doesn't work out of the box)
-- Support for more environments & deployments (e.g., run it as a github action, etc.)
-- Take a look at the [issues](https://github.com/SWE-agent/mini-swe-agent/issues) and look for issues marked `good-first-issue` or `help-wanted` (please read the guidelines below first)
+- Small correctness, diagnostics, and reliability fixes
+- Mocked HTTP and parser regression tests
+- Linux local-shell safety and timeout improvements
+- llama.cpp interoperability that uses the documented Chat Completions API
+- Clear local setup, configuration, and troubleshooting documentation
+- Optional SWE-bench improvements that do not affect the default install
 
-## Design & Architecture
-
-- `mini-swe-agent` aims to stay minimalistic, hackable, and of high quality code.
-- To extend features, we prefer to add a new version of the one of the four components (see [cookbook](advanced/cookbook.md)), rather than making the existing components more complex.
-- Components should be relatively self-contained, but if there are utilities that might be shared, add a `utils` folder (like [this one](https://github.com/SWE-agent/mini-swe-agent/tree/main/src/minisweagent/models/utils)). But keep it simple!
-- If your component is a bit more specific, add it into an `extra` folder (like [this one](https://github.com/SWE-agent/mini-swe-agent/tree/main/src/minisweagent/run/extra))
-- Our target audience is anyone who doesn't shy away from modifying a bit of code (especially a run script) to get what they want.
-- Therefore, not everything needs to be configurable with the config files, but it should be easy to create a run script that makes use of it.
-- Many LMs write very verbose code -- please clean it up! Same goes for the tests. They should still be concise and readable.
-- Please install `pre-commit` (`pip install pre-commit && pre-commit install`) and run it before committing. This will enforce our style guide.
+Provider SDKs, routing layers, streaming, multimodal messages, native tool calls, telemetry, automatic fallback endpoints, and platform-specific Windows/macOS support are outside this fork's scope.
 
 ## Development setup
 
-Make sure to follow the dev setup instructions in [quickstart.md](quickstart.md).
+```bash
+python -m pip install -e '.[dev]'
+pre-commit install
+```
 
-After that you can run `pytest` with `pytest -n auto` (this parallelizes the tests across all cores for speedup).
+Run focused tests while iterating, then the full suite:
+
+```bash
+python -m pytest -q tests/models/test_llamacpp_model.py
+python -m pytest -q
+ruff check .
+```
+
+Build documentation changes strictly:
+
+```bash
+mkdocs build --strict
+```
+
+Install `mini-swe-agent[swebench]` only when changing benchmark functionality.
+
+## Testing expectations
+
+HTTP tests must use mocked sessions or responses; the test suite must not require a real `llama-server`. Cover both successful protocol parsing and failure classification. In particular, verify finite timeout tuples, non-retryable 4xx responses, retryable transient failures, malformed successful responses, metadata preservation, and `stream: false`.
+
+Tests for default imports and CLI help should run in an environment without `litellm`, `openai`, or `datasets`. Benchmark tests must provide a useful missing-extra message.
+
+## Code style
+
+Keep the adapter and control flow explicit. Use ordinary typed Python, four-space indentation, focused functions, and descriptive `snake_case` names. Ruff and pre-commit define formatting and lint policy. Avoid undeclared dependencies and compatibility layers.
+
+## Pull requests
+
+Keep each change focused. Explain the behavior and motivation, list verification commands and results, and call out dependency or configuration changes. Add a regression test for bug fixes. Never include credentials, local model files, trajectories containing sensitive output, caches, or generated build artifacts.
 
 {% include-markdown "_footer.md" %}

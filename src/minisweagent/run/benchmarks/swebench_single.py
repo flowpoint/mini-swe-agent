@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import typer
-from datasets import load_dataset
 
 from minisweagent import global_config_dir
 from minisweagent.agents import get_agent
@@ -11,7 +10,9 @@ from minisweagent.config import builtin_config_dir, get_config_from_spec
 from minisweagent.models import get_model
 from minisweagent.run.benchmarks.swebench import (
     DATASET_MAPPING,
+    SWEBENCH_DEPENDENCY_ERROR,
     get_sb_environment,
+    load_dataset,
 )
 from minisweagent.utils.log import logger
 from minisweagent.utils.serialize import UNSET, recursive_merge
@@ -45,9 +46,8 @@ def main(
     split: str = typer.Option("dev", "--split", help="Dataset split", rich_help_panel="Data selection"),
     instance_spec: str = typer.Option(0, "-i", "--instance", help="SWE-Bench instance ID or index", rich_help_panel="Data selection"),
     model_name: str | None = typer.Option(None, "-m", "--model", help="Model to use", rich_help_panel="Basic"),
-    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'anthropic' or 'minisweagent.models.anthropic.AnthropicModel')", rich_help_panel="Advanced"),
+    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'llamacpp')", rich_help_panel="Advanced"),
     agent_class: str | None = typer.Option(None, "--agent-class", help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')", rich_help_panel="Advanced"),
-    environment_class: str | None = typer.Option(None, "--environment-class", help="Environment class to use (e.g., 'docker' or 'minisweagent.environments.docker.DockerEnvironment')", rich_help_panel="Advanced"),
     yolo: bool = typer.Option(False, "-y", "--yolo", help="Run without confirmation"),
     cost_limit: float | None = typer.Option(None, "-l", "--cost-limit", help="Cost limit. Set to 0 to disable."),
     config_spec: list[str] = typer.Option([str(DEFAULT_CONFIG_FILE)], "-c", "--config", help=_CONFIG_SPEC_HELP_TEXT, rich_help_panel="Basic"),
@@ -58,10 +58,16 @@ def main(
     """Run on a single SWE-Bench instance."""
     dataset_path = DATASET_MAPPING.get(subset, subset)
     logger.info(f"Loading dataset from {dataset_path}, split {split}...")
-    instances = {
-        inst["instance_id"]: inst  # type: ignore
-        for inst in load_dataset(dataset_path, split=split)
-    }
+    try:
+        instances = {
+            inst["instance_id"]: inst  # type: ignore
+            for inst in load_dataset(dataset_path, split=split)
+        }
+    except ModuleNotFoundError as e:
+        if str(e) != SWEBENCH_DEPENDENCY_ERROR:
+            raise
+        typer.echo(SWEBENCH_DEPENDENCY_ERROR, err=True)
+        raise typer.Exit(code=1) from None
     if instance_spec.isnumeric():
         instance_spec = sorted(instances.keys())[int(instance_spec)]
     instance: dict = instances[instance_spec]  # type: ignore
@@ -79,9 +85,6 @@ def main(
         "model": {
             "model_class": model_class or UNSET,
             "model_name": model_name or UNSET,
-        },
-        "environment": {
-            "environment_class": environment_class or UNSET,
         },
     })
     config = recursive_merge(*configs)

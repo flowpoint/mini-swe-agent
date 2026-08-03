@@ -33,8 +33,8 @@ def _key_value_spec_to_nested_dict(config_spec: str) -> dict:
 
     Example:
 
-    "model.model_name=anthropic/claude-sonnet-4-5-20250929"   ->
-    {"model": {"model_name": "anthropic/claude-sonnet-4-5-20250929"}}
+    "model.model_name=local"   ->
+    {"model": {"model_name": "local"}}
     """
     key, value = config_spec.split("=", 1)
     try:

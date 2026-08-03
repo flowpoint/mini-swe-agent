@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 """This is the central entry point to the mini-extra script. Use subcommands
-to invoke other command line utilities like running on benchmarks, editing config,
-inspecting trajectories, etc.
+to invoke other command line utilities like running benchmarks and inspecting trajectories.
 """
 
 import sys
@@ -11,11 +10,9 @@ from importlib import import_module
 from rich.console import Console
 
 subcommands = [
-    ("minisweagent.run.utilities.config", ["config"], "Manage the global config file"),
     ("minisweagent.run.utilities.inspector", ["inspect", "i", "inspector"], "Run inspector (browse trajectories)"),
     ("minisweagent.run.benchmarks.swebench", ["swebench"], "Evaluate on SWE-bench (batch mode)"),
     ("minisweagent.run.benchmarks.swebench_single", ["swebench-single"], "Evaluate on SWE-bench (single instance)"),
-    ("minisweagent.run.benchmarks.programbench", ["programbench"], "Run on ProgramBench (batch mode)"),
 ]
 
 

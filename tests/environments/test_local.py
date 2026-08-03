@@ -30,6 +30,15 @@ def test_local_environment_basic_execution():
     assert "hello world" in result["output"]
 
 
+def test_local_environment_executes_with_bash():
+    """Bash-specific syntax works because Linux commands run through /bin/bash."""
+    env = LocalEnvironment()
+
+    result = env.execute({"command": '[[ -n "$BASH_VERSION" ]] && printf "%s" "$BASH_VERSION"'})
+    assert result["returncode"] == 0
+    assert result["output"]
+
+
 def test_local_environment_set_env_variables():
     """Test setting environment variables in the local environment."""
     env = LocalEnvironment(env={"TEST_VAR": "test_value", "ANOTHER_VAR": "another_value"})
@@ -134,7 +143,6 @@ def test_local_environment_timeout():
     assert result["extra"]["exception_type"] == "TimeoutExpired"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX-specific")
 def test_local_environment_timeout_kills_child_process():
     """Test that timeout kills shell-spawned child processes."""
     with tempfile.TemporaryDirectory() as temp_dir:

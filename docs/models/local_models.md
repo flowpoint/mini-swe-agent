@@ -1,196 +1,92 @@
-!!! abstract "Local models"
+# Local llama.cpp server
 
-    * This guide shows how to set up local models.
-    * You should already be familiar with the [quickstart guide](../quickstart.md).
-    * You should also quickly skim the [global configuration guide](../advanced/global_configuration.md) to understand
-      the global configuration and [yaml configuration files guide](../advanced/yaml_configuration.md).
+This fork supports one local model runtime: `llama-server` on Linux. The client uses the documented OpenAI-compatible Chat Completions endpoint and has no dependency on llama.cpp internals.
 
+## Prerequisites
 
-!!! tip "Examples"
+Install llama.cpp separately and choose a GGUF model whose metadata includes a suitable chat template. Python model code, tokenization, context allocation, and server lifecycle all remain llama.cpp responsibilities.
 
-    * [Issue #303](https://github.com/SWE-agent/mini-swe-agent/issues/303) has several examples of how to use local models.
-    * We also welcome concrete examples of how to use local models per pull request into this guide.
+Start the server with an explicit alias:
 
-## Using litellm
-
-Currently, models are supported via [`litellm`](https://www.litellm.ai/) by default.
-
-There are typically two steps to using local models:
-
-1. Editing the agent config file to add settings like `custom_llm_provider` and `api_base`.
-2. Either ignoring errors from cost tracking or updating the model registry to include your local model.
-
-### Setting API base/provider
-
-If you use local models, you most likely need to add some extra keywords to the `litellm` call.
-This is done with the `model_kwargs` dictionary which is directly passed to `litellm.completion`.
-
-In other words, this is how we invoke litellm:
-
-```python
-litellm.completion(
-    model=model_name,
-    messages=messages,
-    **model_kwargs
-)
+```bash
+llama-server \
+  --model /path/to/model.gguf \
+  --alias local \
+  --host 127.0.0.1 \
+  --port 8080
 ```
 
-You can set `model_kwargs` in an agent config file like the following one:
+The default configuration expects:
 
-??? note "Default configuration file"
+- API root: `http://127.0.0.1:8080/v1`
+- Chat endpoint: `http://127.0.0.1:8080/v1/chat/completions`
+- Model alias: `local`
 
-    ```yaml
-    --8<-- "src/minisweagent/config/mini.yaml"
-    ```
+The adapter does not probe the server or discover loaded models. Keep `model_name` equal to the server's `--alias` value.
 
-In the last section, you can add
+## Configure mini-SWE-agent
 
-```yaml
+The packaged `mini.yaml` already contains a working local configuration:
+
+~~~~yaml
 model:
-  model_name: "my-local-model"
+  model_class: llamacpp
+  model_name: local
+  base_url: http://127.0.0.1:8080/v1
+  request_timeout: 600
+  connect_timeout: 10
   model_kwargs:
-    custom_llm_provider: "openai"
-    api_base: "https://..."
-    ...
-  ...
-```
+    temperature: 0
+    max_tokens: 4096
+  action_regex: '```bash\s*\n(.*?)\n```'
 
-!!! tip "Updating the default `mini` configuration file"
+agent:
+  step_limit: 100
+  wall_time_limit_seconds: 3600
+~~~~
 
-    You can set the `MSWEA_MINI_CONFIG_PATH` setting to set path to the default `mini` configuration file.
-    This will allow you to override the default configuration file with your own.
-    See the [global configuration guide](../advanced/global_configuration.md) for more details.
+Use `temperature: 0` when reproducible generation is important. `request_timeout` is the finite read timeout; `connect_timeout` limits connection setup. Long local generations may need a larger read timeout, but neither timeout should be infinite.
 
-If this is not enough, our model class should be simple to modify:
-
-??? note "Complete model class"
-
-    - [Read on GitHub](https://github.com/swe-agent/mini-swe-agent/blob/main/src/minisweagent/models/litellm_model.py)
-    - [API reference](../reference/models/litellm.md)
-
-    ```python
-    --8<-- "src/minisweagent/models/litellm_model.py"
-    ```
-
-The other part that you most likely need to figure out are costs.
-There are two ways to do this with `litellm`:
-
-1. You set up a litellm proxy server (which gives you a lot of control over all the LM calls)
-2. You update the model registry (next section)
-
-### Cost tracking
-
-If you run with the above, you will most likely get an error about missing cost information.
-
-If you do not need cost tracking, you can ignore these errors, ideally by editing your agent config file to add:
-
-```yaml
-model:
-  cost_tracking: "ignore_errors"
-  ...
-...
-```
-
-Alternatively, you can set the global setting:
+To change a value while retaining the packaged prompt and environment:
 
 ```bash
-export MSWEA_COST_TRACKING="ignore_errors"
+mini \
+  -c mini.yaml \
+  -c model.model_name=my-alias \
+  -c model.base_url=http://127.0.0.1:9090/v1 \
+  -t "Inspect this repository"
 ```
 
-However, note that this is a global setting, and will affect all models!
+## Action format
 
-However, the best way to handle the cost issue is to add a model registry to litellm to include your local model.
+The system prompt requires one fenced `bash` action whenever the model wants to run a command:
 
-LiteLLM gets its cost and model metadata from [this file](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). You can override or add data from this file if it's outdated or missing your desired model by including a custom registry file.
-
-The model registry JSON file should follow LiteLLM's format:
-
-```json
-{
-  "my-custom-model": {
-    "max_tokens": 4096,
-    "input_cost_per_token": 0.0001,
-    "output_cost_per_token": 0.0002,
-    "litellm_provider": "openai",
-    "mode": "chat"
-  },
-  "my-local-model": {
-    "max_tokens": 8192,
-    "input_cost_per_token": 0.0,
-    "output_cost_per_token": 0.0,
-    "litellm_provider": "ollama",
-    "mode": "chat"
-  }
-}
-```
-
-!!! warning "Model names"
-
-    Model names are case sensitive. Please make sure you have an exact match.
-
-!!! warning "Model provider"
-
-    If you use the `custom_llm_provider` or have a provider prefixed to the model name (e.g., `openai/...`),
-    then this must also match `litellm_provider` in the config!
-
-There are two ways of setting the path to the model registry:
-
-1. Set `LITELLM_MODEL_REGISTRY_PATH` (e.g., `mini-extra config set LITELLM_MODEL_REGISTRY_PATH /path/to/model_registry.json`)
-2. Set `litellm_model_registry` in the agent config file
-
-```yaml
-model:
-  litellm_model_registry: "/path/to/model_registry.json"
-  ...
-...
-```
-
-## Concrete examples
-
-### Generating SWE-bench trajectories with vLLM
-
-This example shows how to generate SWE-bench trajectories using [vLLM](https://docs.vllm.ai/en/latest/) as the local inference engine.
-
-First, launch a vLLM server with your chosen model. For example:
-
+~~~~text
 ```bash
-vllm serve ricdomolm/mini-coder-1.7b &
+git status --short
 ```
+~~~~
 
-By default, the server will be available at `http://localhost:8000`.
+A response with no matching block or more than one matching block is returned to the model as a format error. Native tool/function calls are not accepted.
 
-Second, edit the mini-swe-agent SWE-bench config file located in `src/minisweagent/config/benchmarks/swebench.yaml` to include your local vLLM model:
+## Requests and retries
 
-```yaml
-model:
-  model_name: "hosted_vllm/ricdomolm/mini-coder-1.7b"  # or hosted_vllm/path/to/local/model
-  model_kwargs:
-    api_base: "http://localhost:8000/v1"  # adjust if using a non-default port/address
-```
+Each query is a synchronous JSON `POST` with `stream: false`. The adapter reuses one `requests.Session` and records the response, token usage, llama.cpp timings, timestamp, and zero monetary cost in the trajectory.
 
-If you need a custom registry, as detailed above, create a `registry.json` file:
+Connection errors, timeouts, and HTTP `429`, `502`, `503`, or `504` are retried up to three total attempts. Client errors such as `400`, `401`, `403`, and `404` fail immediately. Invalid JSON or a malformed successful response also fails immediately.
 
-```bash
-cat > registry.json <<'EOF'
-{
-  "ricdomolm/mini-coder-1.7b": {
-    "max_tokens": 40960,
-    "input_cost_per_token": 0.0,
-    "output_cost_per_token": 0.0,
-    "litellm_provider": "hosted_vllm",
-    "mode": "chat"
-  }
-}
-EOF
-```
+## Troubleshooting
 
-Now you’re ready to generate trajectories! Let's solve the `django__django-11099` instance of SWE-bench Verified:
+- **Connection refused or timed out:** verify that `llama-server` is running on the configured host and port. Increase only `request_timeout` if generation itself is slow.
+- **HTTP 404:** use the API root ending in `/v1`, not the full `/chat/completions` URL, and verify the running llama.cpp build exposes Chat Completions.
+- **Unknown model:** make `model_name` match `--alias` exactly.
+- **Context-window error:** increase the server's configured context when starting llama.cpp or reduce the prompt/history and `max_tokens`.
+- **Format errors:** choose a model/chat template that follows instructions and reinforce the requirement for exactly one fenced `bash` block.
 
-```bash
-LITELLM_MODEL_REGISTRY_PATH=registry.json mini-extra swebench \
-    --output test/ --subset verified --split test --filter '^(django__django-11099)$'
-```
+No API key or provider name is needed. The adapter ignores inherited proxy and credential settings and will never fall back to another endpoint.
 
-You should now see the generated trajectory in the `test/` directory.
+## Deliberate limitations
+
+Only Linux, Python 3.11+, text messages, non-streaming Chat Completions, and the current local shell are supported. There is no multimodal input, native function calling, cloud routing, fallback provider, automatic model discovery, or monetary cost calculation.
 
 --8<-- "docs/_footer.md"

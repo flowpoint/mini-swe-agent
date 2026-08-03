@@ -15,10 +15,9 @@ def strip_ansi_codes(text: str) -> str:
     return ansi_escape.sub("", text)
 
 
-def test_configure_if_first_time_called():
-    """Test that configure_if_first_time is called when running mini main."""
+def test_main_starts_without_setup_wizard():
+    """Test that mini starts directly from its loaded configuration."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time") as mock_configure,
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -48,14 +47,13 @@ def test_configure_if_first_time_called():
             environment_class=None,
         )
 
-        # Verify configure_if_first_time was called
-        mock_configure.assert_called_once()
+        mock_get_model.assert_called_once()
+        mock_agent.run.assert_called_once_with("Test task")
 
 
 def test_mini_command_calls_run_interactive():
     """Test that mini command creates agent via get_agent."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -97,7 +95,6 @@ def test_mini_command_calls_run_interactive():
 def test_mini_calls_prompt_when_no_task_provided():
     """Test that mini calls prompt when no task is provided."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini._multiline_prompt") as mock_prompt,
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
@@ -141,7 +138,6 @@ def test_mini_calls_prompt_when_no_task_provided():
 def test_mini_with_explicit_model():
     """Test that mini works with explicitly provided model."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -187,7 +183,6 @@ def test_mini_with_explicit_model():
 def test_yolo_mode_sets_correct_agent_config():
     """Test that yolo mode sets the correct agent configuration."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -229,7 +224,6 @@ def test_yolo_mode_sets_correct_agent_config():
 def test_confirm_mode_sets_correct_agent_config():
     """Test that when yolo=False, no explicit mode is set (defaults to None)."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -271,7 +265,6 @@ def test_confirm_mode_sets_correct_agent_config():
 def test_cost_limit_zero_is_preserved():
     """Test that an explicit cost_limit=0 is not dropped during config merge."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -390,7 +383,6 @@ def test_mini_extra_help():
     assert result.returncode == 0
     clean_output = strip_ansi_codes(result.stdout)
     assert "central entry point for all extra commands" in clean_output
-    assert "config" in clean_output
     assert "inspect" in clean_output
     assert "swebench" in clean_output
 
@@ -412,7 +404,6 @@ def test_mini_e_help():
 @pytest.mark.parametrize(
     ("subcommand", "aliases"),
     [
-        ("config", ["config"]),
         ("inspect", ["inspect", "i", "inspector"]),
         ("swebench", ["swebench"]),
         ("swebench-single", ["swebench-single"]),
@@ -433,26 +424,9 @@ def test_mini_extra_subcommand_help(subcommand: str, aliases: list[str]):
         assert len(result.stdout) > 0
 
 
-def test_mini_extra_config_help():
-    """Test that mini-extra config --help works correctly."""
-    result = subprocess.run(
-        ["mini-extra", "config", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    assert len(result.stdout) > 0
-    # Config command should have help output
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "--help" in clean_output
-
-
 def test_exit_immediately_flag_sets_confirm_exit_false():
     """Test that --exit-immediately flag sets confirm_exit to False in agent config."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -491,7 +465,6 @@ def test_exit_immediately_flag_sets_confirm_exit_false():
 def test_no_exit_immediately_flag_sets_confirm_exit_true():
     """Test that when --exit-immediately flag is not used, confirm_exit defaults to True."""
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -531,7 +504,6 @@ def test_exit_immediately_flag_with_typer_runner():
     from typer.testing import CliRunner
 
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
@@ -572,7 +544,6 @@ def test_output_file_is_created(tmp_path):
     config_file.write_text(default_config_path.read_text())
 
     with (
-        patch("minisweagent.run.mini.configure_if_first_time"),
         patch("minisweagent.run.mini.get_model") as mock_get_model,
         patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.agents.utils.prompt_user.prompt_session.prompt", return_value=""),

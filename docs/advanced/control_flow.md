@@ -29,7 +29,7 @@ flowchart TD
         S1["<b><code>Agent.query</code></b>"] --> S2["<b><code>Agent.execute_actions</code></b>"]
     end
 
-    subgraph query["<b><code>Agent.query()</code></b><br>Also checks for cost limits</br><br></br>"]
+    subgraph query["<b><code>Agent.query()</code></b><br>Also checks configured run limits</br><br></br>"]
         direction TB
         Q3["<b><code>Model.query</code></b>"] --> Q4["<b><code>Agent.add_messages</code></b>"]
     end
@@ -103,7 +103,7 @@ This uses exceptions that inherit from `InterruptAgentFlow`. All these exception
             raise Submitted({"role": "exit", "content": ..., "extra": {...}})
     ```
 
-- `LimitsExceeded` is raised when we hit a cost or step limit
+- `LimitsExceeded` is raised when the step limit is reached. The legacy monetary cost check remains in the trajectory-compatible agent, but local llama.cpp responses always report zero cost; use step and wall-time limits instead.
 - `FormatError` is raised when the output from the LM is not in the expected format
 - `TimeoutError` is raised when the action took too long to execute
 - `UserInterruption` is raised when the user interrupts the agent
@@ -122,4 +122,4 @@ while True:
 
 Using exceptions for the control flow is a lot easier than passing around flags and states, especially when extending or subclassing the agent.
 
-{% include-markdown "_footer.md" %}
+{% include-markdown "../_footer.md" %}

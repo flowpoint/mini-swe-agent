@@ -1,114 +1,80 @@
-# Model trouble shooting
+# Model troubleshooting
 
-This section has examples of common error messages and how to fix them.
+The runtime has one network path: `LlamaCppModel` sends `POST {base_url}/chat/completions` to the configured local `llama-server`. Start diagnosis with the client error and the server log from the same request.
 
-## Litellm
+## Cannot connect
 
-`litellm` is the default model class and is used to support most models.
+For `ConnectionError` or a connection timeout:
 
-### Invalid API key
+- Confirm `llama-server` is running on the configured host and port.
+- Keep `base_url` at the API root, normally `http://127.0.0.1:8080/v1`.
+- Check that the server was bound to `127.0.0.1` or another intentionally reachable Linux address.
+- Increase `connect_timeout` only for slow connection setup.
 
-```json
-AuthenticationError: litellm.AuthenticationError: geminiException - {
-  "error": {
-    "code": 400,
-    "message": "API key not valid. Please pass a valid API key.",
-    "status": "INVALID_ARGUMENT",
-    "details": [
-      {
-        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-        "reason": "API_KEY_INVALID",
-        "domain": "googleapis.com",
-        "metadata": {
-          "service": "generativelanguage.googleapis.com"
-        }
-      },
-      {
-        "@type": "type.googleapis.com/google.rpc.LocalizedMessage",
-        "locale": "en-US",
-        "message": "API key not valid. Please pass a valid API key."
-      }
-    ]
-  }
-}
- You can permanently set your API key with `mini-extra config set KEY VALUE`.
-```
+Connection failures and timeouts are retried up to three total attempts. The adapter ignores inherited proxy settings, so proxy environment variables cannot redirect local prompts.
 
-Double check your API key and make sure it is correct.
-You can take a look at all your API keys with `mini-extra config edit`.
+## Read timeout
 
-### "Weird" authentication error
-
-If you fail to authenticate but don't see the previous error message,
-it might be that you forgot to include the provider in the model name.
-
-For example, this:
-
-```
-  File "/Users/.../.virtualenvs/openai/lib/python3.12/site-packages/google/auth/_default.py", line 685, in default
-    raise exceptions.DefaultCredentialsError(_CLOUD_SDK_MISSING_CREDENTIALS)
-google.auth.exceptions.DefaultCredentialsError: Your default credentials were not found. To set up Application Default Credentials, see
-https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
-```
-
-happens if you forgot to prefix your gemini model with `gemini/`.
-
-### Error during cost calculation
-
-```
-Exception: This model isn't mapped yet. model=together_ai/qwen/qwen3-coder-480b-a35b-instruct-fp8, custom_llm_provider=together_ai.
-Add it here - https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json.
-```
-
-`litellm` doesn't know about the cost of your model.
-Take a look at the model registry section of the [local models](local_models.md) guide to add it.
-
-Another common mistake is to not include any or the correct provider in the model name (e.g., `gemini-2.0-flash` instead of `gemini/gemini-2.0-flash`).
-
-## Temperature not supported
-
-Some models (like `o1`, `o3`, `GPT-5` etc.) do not support temperature. The default config no longer specifies a temperature value, so this should work out of the box now.
-
-## Portkey
-
-### Error during cost calculation
-
-We use `litellm` to calculate costs for Portkey models because Portkey doesn't seem to provide per-request cost information without
-very inconvenient APIs.
-
-This can lead to errors likethis:
-
-```
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/minisweagent/models/portkey_model.py", line 85, in query
-    cost = litellm.cost_calculator.completion_cost(response)
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/cost_calculator.py", line 973, in completion_cost
-    raise e
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/cost_calculator.py", line 966, in completion_cost
-    raise e
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/cost_calculator.py", line 928, in completion_cost
-    ) = cost_per_token(
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/cost_calculator.py", line 218, in cost_per_token
-    _, custom_llm_provider, _, _ = litellm.get_llm_provider(model=model)
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/litellm_core_utils/get_llm_provider_logic.py", line 395, in get_llm_provider
-    raise e
-  File "/opt/miniconda3/envs/clash/lib/python3.10/site-packages/litellm/litellm_core_utils/get_llm_provider_logic.py", line 372, in get_llm_provider
-    raise litellm.exceptions.BadRequestError(  # type: ignore
-litellm.exceptions.BadRequestError: litellm.BadRequestError: LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=grok-code-fast-1
- Pass model as E.g. For 'Huggingface' inference endpoints pass in `completion(model='huggingface/starcoder',..)` Learn more: https://docs.litellm.ai/docs/providers
-```
-
-In this case, the issue is simply that the portkey model name doesn't match the litellm model name (and very specifically here
-doesn't include the provider).
-
-To fix this, you can manually set the litellm model name to the portkey model name with the `litellm_model_name_override` key.
-For example:
+Local generation may exceed the finite `request_timeout`. Increase it in YAML if the server continues generating normally:
 
 ```yaml
 model:
-  model_name: "grok-code-fast-1"  # the portkey model name
-  model_class: "portkey"  # make sure to use the portkey model class
-  litellm_model_name_override: "xai/grok-code-fast-1"  # the litellm model name for cost information
-  ...
+  request_timeout: 900
+  connect_timeout: 10
 ```
+
+A read timeout is retried. Avoid an infinite timeout; `agent.wall_time_limit_seconds` should still bound the overall run.
+
+## HTTP errors
+
+- **400:** inspect the server's diagnostic text. Common causes are an unsupported generation field, a context-window overflow, or an invalid request. This is not retried.
+- **404:** `base_url` should end at `/v1`, not `/v1/chat/completions`. Check that the llama.cpp build exposes Chat Completions.
+- **429, 502, 503, or 504:** these statuses are treated as transient and retried up to three attempts.
+- **Other 4xx errors:** fail immediately. Verify `model_name` matches the exact `llama-server --alias` value.
+
+Diagnostics include a bounded excerpt of the response and do not print URL credentials; URLs containing credentials are rejected.
+
+## Invalid JSON or malformed response
+
+A successful HTTP response must be JSON with string content at:
+
+```text
+choices[0].message.content
+```
+
+Missing `choices`, a missing message, non-text content, or invalid JSON raises `LlamaCppProtocolError` without retrying. These errors usually indicate an incompatible endpoint or server-side response transformation.
+
+## The model does not produce an action
+
+Every action must contain exactly one matching block:
+
+~~~~text
+```bash
+git status
+```
+~~~~
+
+Zero or multiple fenced bash blocks produce a format error. If this repeats:
+
+- use a model with a reliable instruction-following chat template;
+- ensure llama.cpp loaded the intended template;
+- keep the packaged system prompt and `action_regex` together;
+- reduce `max_tokens` only if responses are excessively long, not if the action is being truncated.
+
+Native tool/function calls are not parsed.
+
+## Unexpected model output
+
+Set `temperature: 0` for deterministic generation settings. Reproducibility can still depend on the model file, llama.cpp version, context, and server parameters. Confirm that no additional server-side sampling flags override the request.
+
+## SWE-bench dependency error
+
+Install dataset support explicitly:
+
+```bash
+python -m pip install 'mini-swe-agent[swebench]'
+```
+
+The normal `mini` command does not need that extra.
 
 --8<-- "docs/_footer.md"

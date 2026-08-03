@@ -17,6 +17,12 @@
 
 ## Usage
 
+The inspector is optional because its Textual interface is not part of the default runtime installation. Install it before using the commands below:
+
+```bash
+python -m pip install 'mini-swe-agent[inspector]'
+```
+
 ```bash
 # Find all .traj.json files recursively from current directory
 mini-extra inspector
@@ -43,7 +49,7 @@ mini-e i <path_to_directory>
 
 > How can I select/copy text on the screen?
 
-Hold down the `Alt`/`Option` key and use the mouse to select the text.
+Hold down the `Alt` key and use the mouse to select the text.
 
 ## Implementation
 

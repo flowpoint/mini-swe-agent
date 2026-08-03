@@ -34,60 +34,41 @@ class TestGetModelName:
     def test_raises_error_when_no_model_configured(self):
         """Test that ValueError is raised when no model is configured anywhere."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(
-                ValueError, match="No default model set. Please run `mini-extra config setup` to set one."
-            ):
+            with pytest.raises(ValueError, match="No model name set"):
                 get_model_name(None, {})
 
-            with pytest.raises(
-                ValueError, match="No default model set. Please run `mini-extra config setup` to set one."
-            ):
+            with pytest.raises(ValueError, match="No model name set"):
                 get_model_name(None, None)
 
 
 class TestGetModelClass:
-    def test_anthropic_model_selection(self):
-        """Test that anthropic-related model names return LitellmModel by default."""
-        from minisweagent.models.litellm_model import LitellmModel
+    def test_llamacpp_model_selection(self):
+        from minisweagent.models.llamacpp_model import LlamaCppModel
 
-        for name in ["anthropic", "sonnet", "opus", "claude-sonnet", "claude-opus"]:
-            assert get_model_class(name) == LitellmModel
+        assert get_model_class("local", "llamacpp") is LlamaCppModel
 
-    def test_litellm_model_fallback(self):
-        """Test that non-anthropic model names return LitellmModel."""
-        from minisweagent.models.litellm_model import LitellmModel
+    def test_default_model_selection(self):
+        """Omitting model_class never falls back to a cloud-provider adapter."""
+        from minisweagent.models.llamacpp_model import LlamaCppModel
 
-        for name in ["gpt-4", "gpt-3.5-turbo", "llama2", "random-model"]:
-            assert get_model_class(name) == LitellmModel
+        assert get_model_class("local") is LlamaCppModel
 
-    def test_partial_matches(self):
-        """Test that partial string matches work correctly."""
-        from minisweagent.models.litellm_model import LitellmModel
-
-        assert get_model_class("my-anthropic-model") == LitellmModel
-        assert get_model_class("sonnet-latest") == LitellmModel
-        assert get_model_class("opus-v2") == LitellmModel
-        assert get_model_class("gpt-anthropic-style") == LitellmModel
-        assert get_model_class("totally-different") == LitellmModel
-
-    def test_litellm_response_model_selection(self):
-        """Test that litellm_response model class can be selected."""
-        from minisweagent.models.litellm_response_model import LitellmResponseModel
-
-        assert get_model_class("any-model", "litellm_response") == LitellmResponseModel
+    def test_unknown_model_class_raises(self):
+        with pytest.raises(ValueError, match="Unknown model class: cloud-provider"):
+            get_model_class("local", "cloud-provider")
 
 
 class TestGetModel:
     def test_config_deep_copy(self):
         """Test that get_model preserves original config via deep copy."""
-        original_config = {"model_kwargs": {"api_key": "original"}, "outputs": [make_output("test", [])]}
+        original_config = {"model_kwargs": {"temperature": 0}, "outputs": [make_output("test", [])]}
 
         with patch("minisweagent.models.get_model_class") as mock_get_class:
             mock_get_class.return_value = lambda **kwargs: DeterministicModel(
                 outputs=[make_output("test", [])], model_name="test"
             )
             get_model("test-model", original_config)
-            assert original_config["model_kwargs"]["api_key"] == "original"
+            assert original_config["model_kwargs"]["temperature"] == 0
             assert "model_name" not in original_config
 
     def test_integration_with_compatible_model(self):
@@ -108,24 +89,26 @@ class TestGetModel:
             assert model.config.outputs == [hello_output]
             assert model.config.model_name == "test-model"
 
-    def test_config_api_key_used_when_no_env_var(self):
-        """Test that config api_key is used when env var is not set."""
-        with patch.dict(os.environ, {}, clear=True):
-            config = {"model_kwargs": {"api_key": "config-key"}, "model_class": "litellm"}
-            model = get_model("test-model", config)
+    def test_get_llamacpp_model(self):
+        from minisweagent.models.llamacpp_model import LlamaCppModel
 
-            # LitellmModel stores the api_key in model_kwargs
-            assert model.config.model_kwargs["api_key"] == "config-key"
+        model = get_model(
+            "local",
+            {
+                "model_class": "llamacpp",
+                "base_url": "http://127.0.0.1:8080/v1",
+                "request_timeout": 90,
+                "connect_timeout": 3,
+                "model_kwargs": {"temperature": 0, "max_tokens": 2048},
+            },
+        )
 
-    def test_no_api_key_when_none_provided(self):
-        """Test that no api_key is set when neither env var nor config provide one."""
-        with patch.dict(os.environ, {}, clear=True):
-            config = {"model_class": "litellm"}
-            model = get_model("test-model", config)
-
-            # LitellmModel should not have api_key when none provided
-            model_kwargs = getattr(model.config, "model_kwargs", {})
-            assert "api_key" not in model_kwargs
+        assert isinstance(model, LlamaCppModel)
+        assert model.config.model_name == "local"
+        assert model.config.base_url == "http://127.0.0.1:8080/v1"
+        assert model.config.request_timeout == 90
+        assert model.config.connect_timeout == 3
+        assert model.config.model_kwargs == {"temperature": 0, "max_tokens": 2048}
 
     def test_get_deterministic_model(self):
         """Test that get_model can instantiate DeterministicModel via model_class parameter."""

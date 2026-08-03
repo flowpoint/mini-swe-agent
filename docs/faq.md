@@ -1,121 +1,71 @@
 # FAQ
 
-## General
+## Runtime
 
-!!! question "Does mini-SWE-agent work on my system?"
+??? question "Which operating systems are supported?"
 
-    mini-SWE-agent should work on any system that has a bash shell or uses a container runtime (e.g., docker, singularity, apptainer, etc.) to emulate one.
+    This fork supports Linux with Python 3.11 or newer. Windows and macOS behavior is not supported or tested.
 
-??? question "Should I use mini-SWE-agent or swe-agent?"
+??? question "Which model servers are supported?"
 
-    You should use `mini-swe-agent` if
+    One local `llama-server` from llama.cpp is supported through its OpenAI-compatible Chat Completions endpoint. Set `model_name` to the server's `--alias` value. The client does not route between servers or discover models automatically.
 
-    - You want a quick command line tool that works locally
-    - You want an agent with a very simple control flow
-    - You want even faster, simpler & more stable sandboxing & benchmark evaluations
-    - You are doing FT or RL and don't want to overfit to a specific agent scaffold
+??? question "Do I need credentials?"
 
-    You should use `swe-agent` if
+    No. The default endpoint is loopback-only, the adapter does not read API keys, and URLs containing credentials are rejected. The HTTP session also ignores inherited proxy and credential settings.
 
-    - You need specific tools or want to experiment with different tools
-    - You want to experiment with different history processors
-    - You want very powerful yaml configuration without touching code
+??? question "Which GGUF models work?"
 
-    What you get with both
+    The HTTP protocol works with llama.cpp models that support Chat Completions, but agent quality depends on the model's instruction following and chat template. The model must reliably emit exactly one fenced `bash` block when asked to act.
 
-    - Excellent performance on SWE-Bench
-    - A trajectory browser
+??? question "Is generation deterministic?"
 
-??? question "How is `mini` simpler than `swe-agent`?"
+    The default sends `temperature: 0`. Keeping the same model, prompt, llama.cpp build, context, and server parameters gives the most reproducible behavior, but exact bit-for-bit output is a server/runtime concern.
 
-    `mini` is simpler than `swe-agent` because it:
+## Agent behavior
 
-    - Does not have any tools other than bash — it doesn't even use the tool-calling interface of the LMs.
-      This means you don't have to install anything in any environment you're running in. `bash` is all you need.
-    - Has a completely linear history — every step of the agent just appends to the messages and that's it.
-    - Executes actions with `subprocess.run` — every action is completely independent (as opposed to keeping a stateful shell session running).
-      This [avoids so many issues](#why-no-shell-session), trust me.
+??? question "Why fenced bash instead of native tool calls?"
 
-??? question "What are the limitations of mini-SWE-agent?"
+    The fork deliberately keeps one text protocol. The assistant returns text, the existing regular-expression parser extracts exactly one `bash` fence, and the local environment executes it. Native function/tool calling is out of scope.
 
-    mini-SWE-agent can be extended trivially in various ways, the following assumes the default setup.
-    As reflected in the high SWE-bench scores, none of the following limitations are a problem in practice.
+??? question "Why is there no persistent shell session?"
+    <a name="why-no-shell-session"></a>
 
-    - No tools other than bash
-    - Actions are parsed from triple-backtick blocks (rather than assuming a function calling/tool calling format)
-    - By default, actions are executed as `subprocess.run`, i.e., every action is independent of the previous ones.
-      (meaning that the agent cannot change directories or export environment variables; however environment variables
-      can be set per-action). This [avoids so many issues](#why-no-shell-session), trust me.
+    Each action starts a new subprocess. This makes completion, timeouts, and process-group cleanup explicit and prevents one bad command from corrupting later shell interactions. Commands such as `cd` and `export` do not persist; include them in every action that needs them.
 
-    If you want more flexibility with these items, you can use [SWE-agent](https://swe-agent.com/) instead.
+??? question "Is local execution sandboxed?"
+
+    No. `LocalEnvironment` runs with the current user's permissions. Confirmation mode asks before commands; `--yolo` removes that safeguard. Use a disposable checkout or the Docker environment used for SWE-bench when isolation is required.
+
+??? question "How do I stop runaway work?"
+
+    Use `agent.step_limit` and `agent.wall_time_limit_seconds`. Per-command execution is bounded by `environment.timeout`, and each HTTP request uses finite connect/read timeouts. Monetary cost limits are ineffective because local responses record `cost: 0.0`.
+
+## Configuration and output
+
+??? question "How do I change the endpoint or alias?"
+
+    Retain the packaged base and add overrides:
+
+    ```bash
+    mini -c mini.yaml \
+      -c model.base_url=http://127.0.0.1:9090/v1 \
+      -c model.model_name=my-alias \
+      -t "Inspect this repository"
+    ```
 
 ??? question "Where is global configuration stored?"
 
-    The global configuration is stored in the `.env` file in the config directory.
-    The location is printed when you run `mini --help`.
+    Runtime settings are YAML or process environment variables; this fork does not load a credential `.env` file. On Linux, the default trajectory is written under the platform configuration directory, normally `~/.config/mini-swe-agent/last_mini_run.traj.json`. Use `-o` to choose another path.
 
-    The `.env` file is a simple key-value file that is read by the `dotenv` library.
+??? question "What does cost mean for a local model?"
 
+    The adapter always records `cost: 0.0` and preserves token usage and llama.cpp timing metadata when the server returns them. There is no monetary cost calculation.
 
-## Models
+## Optional benchmarks
 
-!!! question "What models do you support?"
+??? question "Why does SWE-bench ask for an extra dependency?"
 
-    Currently, mini-SWE-agent supports all models that are supported by [litellm](https://github.com/BerriAI/litellm)
-    or [OpenRouter](https://openrouter.ai/)
-    and we're open to extend the `models/` directory with more models should `litellm` not support them.
-
-!!! question "How do I set the API key for a model?"
-
-    The API key can be stored either as an environment variable (note that enviroinment variables are not persistent
-    unless you set them in your `~/.bashrc` or similar), or as a permanent key in the config file.
-
-    To temporarily set the API key as an environment variable, you can use the following command:
-
-    ```bash
-    export OPENAI_API_KEY=sk-test123
-    ```
-
-    To permanently set the API key in the config file, you can use the following command:
-
-    ```bash
-    mini-extra config set OPENAI_API_KEY sk-test123
-    ```
-
-    Alternatively, you can directly edit the `.env` file in the config directory
-    (the location is printed when you run `mini --help`).
-
-!!! question "How can I set the default model?"
-
-    The default model is stored in the config/environment as `MSWEA_MODEL_NAME`.
-    To permanently change it:
-
-    ```bash
-    mini-extra config set MSWEA_MODEL_NAME anthropic/claude-sonnet-4-5-20250929
-    ```
-
-    Alternatively, you can directly edit the `.env` file in the config directory
-    (the location is printed when you run `mini --help`).
-
-## Minutia
-
-??? question "Why is not needing a running shell session such a big deal?"
-    <a name="why-no-shell-session"></a>
-
-    Most agents so far kept a running shell session. Every action from the agent was executed in this session.
-    However, this is far from trivial:
-
-    1. It's not obvious when a command has terminated. Essentially you're just pasting input into the shell session, and press enter—but when do you stop reading output?
-       We've experimented with various heuristics (watching PIDs, watching for the shell to go back to the prompt, etc.) but all of them were flaky.
-       The `mini` agent doesn't need any of this!
-    2. Particularly bad commands from the LM can kill the shell session. Then what?
-    3. Interrupting a command running in a shell session can also mess up the shell itself and can in particular interfere with all the following outputs you want to extract.
-
-    `mini` is different: There is no running shell session. Every action is executed as a subprocess, that means
-    every action is independent of the previous ones (it is literally a `subprocess.run`/`os.system`/`docker exec` call).
-
-    This means that the agent cannot even change directories or export environment variables.
-    But you don't need this! You can always prefix `cd /path/to/project` or `export FOO=bar` to every action
-    (and in fact some LMs like Claude will do that even if you don't ask them to).
+    `datasets` is intentionally excluded from the normal installation. Install `mini-swe-agent[swebench]` only for SWE-bench commands; normal agent and CLI startup do not import it.
 
 {% include-markdown "_footer.md" %}

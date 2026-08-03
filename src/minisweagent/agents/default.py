@@ -25,7 +25,7 @@ class AgentConfig(BaseModel):
     """Template for the first user message specifying the task (the second message overall)."""
     step_limit: int = 0
     """Maximum number of steps the agent can take."""
-    cost_limit: float = 3.0
+    cost_limit: float = 0.0
     """Stop agent after exceeding (!) this cost."""
     wall_time_limit_seconds: int = 0
     """Stop agent after this many seconds of wall-clock time. 0 means no limit."""

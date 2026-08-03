@@ -12,7 +12,7 @@ import yaml
 from minisweagent import package_dir
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
-from minisweagent.models.litellm_model import LitellmModel
+from minisweagent.models.llamacpp_model import LlamaCppModel
 
 app = typer.Typer()
 
@@ -21,16 +21,21 @@ app = typer.Typer()
 def main(
     task: str = typer.Option(..., "-t", "--task", help="Task/problem statement", show_default=False, prompt=True),
     model_name: str = typer.Option(
-        os.getenv("MSWEA_MODEL_NAME"),
+        os.getenv("MSWEA_MODEL_NAME", "local"),
         "-m",
         "--model",
-        help="Model name (defaults to MSWEA_MODEL_NAME env var)",
+        help="llama.cpp model alias (defaults to MSWEA_MODEL_NAME or local)",
         prompt="What model do you want to use?",
     ),
+    base_url: str = typer.Option("http://127.0.0.1:8080/v1", "--base-url", help="llama.cpp OpenAI API root"),
 ) -> DefaultAgent:
     logging.basicConfig(level=logging.DEBUG)
     agent = DefaultAgent(
-        LitellmModel(model_name=model_name),
+        LlamaCppModel(
+            model_name=model_name,
+            base_url=base_url,
+            model_kwargs={"temperature": 0, "max_tokens": 4096},
+        ),
         LocalEnvironment(),
         **yaml.safe_load(Path(package_dir / "config" / "default.yaml").read_text())["agent"],
     )

@@ -70,10 +70,9 @@ class LocalEnvironment:
 
 
 def _run(command: str, cwd: str, env: dict[str, str], timeout: int) -> subprocess.CompletedProcess[str]:
-    """Like subprocess.run, but kills the whole process group on timeout so no children are orphaned."""
+    """Run a command with Linux bash, killing the process group on timeout."""
     process = subprocess.Popen(
-        command,
-        shell=True,
+        ["/bin/bash", "-c", command],
         text=True,
         cwd=cwd,
         env=env,
@@ -81,12 +80,12 @@ def _run(command: str, cwd: str, env: dict[str, str], timeout: int) -> subproces
         errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        start_new_session=os.name == "posix",
+        start_new_session=True,
     )
     try:
         stdout, _ = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL) if os.name == "posix" else process.kill()
+        os.killpg(process.pid, signal.SIGKILL)
         stdout, _ = process.communicate()
         raise subprocess.TimeoutExpired(command, timeout, output=stdout)
     return subprocess.CompletedProcess(command, process.returncode, stdout=stdout)

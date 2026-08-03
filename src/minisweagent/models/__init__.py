@@ -52,13 +52,6 @@ def get_model(input_model_name: str | None = None, config: dict | None = None) -
 
     model_class = get_model_class(resolved_model_name, config.pop("model_class", ""))
 
-    if (
-        any(s in resolved_model_name.lower() for s in ["anthropic", "sonnet", "opus", "claude"])
-        and "set_cache_control" not in config
-    ):
-        # Select cache control for Anthropic models by default
-        config["set_cache_control"] = "default_end"
-
     return model_class(**config)
 
 
@@ -72,42 +65,28 @@ def get_model_name(input_model_name: str | None = None, config: dict | None = No
         return from_config
     if from_env := os.getenv("MSWEA_MODEL_NAME"):
         return from_env
-    raise ValueError("No default model set. Please run `mini-extra config setup` to set one.")
+    raise ValueError("No model name set. Specify model_name or use the built-in local configuration.")
 
 
 _MODEL_CLASS_MAPPING = {
-    "litellm": "minisweagent.models.litellm_model.LitellmModel",
-    "litellm_textbased": "minisweagent.models.litellm_textbased_model.LitellmTextbasedModel",
-    "litellm_response": "minisweagent.models.litellm_response_model.LitellmResponseModel",
-    "openrouter": "minisweagent.models.openrouter_model.OpenRouterModel",
-    "openrouter_textbased": "minisweagent.models.openrouter_textbased_model.OpenRouterTextbasedModel",
-    "openrouter_response": "minisweagent.models.openrouter_response_model.OpenRouterResponseModel",
-    "portkey": "minisweagent.models.portkey_model.PortkeyModel",
-    "portkey_response": "minisweagent.models.portkey_response_model.PortkeyResponseAPIModel",
-    "requesty": "minisweagent.models.requesty_model.RequestyModel",
+    "llamacpp": "minisweagent.models.llamacpp_model.LlamaCppModel",
     "deterministic": "minisweagent.models.test_models.DeterministicModel",
 }
 
 
 def get_model_class(model_name: str, model_class: str = "") -> type:
-    """Select the best model class.
+    """Select one of the explicitly supported model classes.
 
-    If a model_class is provided (as shortcut name, or as full import path,
-    e.g., "anthropic" or "minisweagent.models.anthropic.AnthropicModel"),
-    it takes precedence over the `model_name`.
-    Otherwise, the model_name is used to select the best model class.
+    ``model_name`` is the llama.cpp server alias, not a provider-routing hint.
+    ``DeterministicModel`` is retained only for tests.
     """
-    if model_class:
-        full_path = _MODEL_CLASS_MAPPING.get(model_class, model_class)
-        try:
-            module_name, class_name = full_path.rsplit(".", 1)
-            module = importlib.import_module(module_name)
-            return getattr(module, class_name)
-        except (ValueError, ImportError, AttributeError):
-            msg = f"Unknown model class: {model_class} (resolved to {full_path}, available: {_MODEL_CLASS_MAPPING})"
-            raise ValueError(msg)
+    selected = model_class or "llamacpp"
+    try:
+        full_path = _MODEL_CLASS_MAPPING[selected]
+    except KeyError:
+        available = ", ".join(sorted(_MODEL_CLASS_MAPPING))
+        raise ValueError(f"Unknown model class: {selected}. Available: {available}") from None
 
-    # Default to LitellmModel
-    from minisweagent.models.litellm_model import LitellmModel
-
-    return LitellmModel
+    module_name, class_name = full_path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)

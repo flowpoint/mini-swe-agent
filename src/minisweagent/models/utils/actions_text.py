@@ -1,7 +1,4 @@
-"""Parse actions & format observations without toolcalls.
-This was the method used for mini-swe-agent v1.0 and the original SWE-agent.
-As of mini-swe-agent v2.0, we strongly recommend to use toolcalls instead.
-"""
+"""Parse fenced text actions and format text observations."""
 
 import re
 import time
@@ -9,7 +6,6 @@ import time
 from jinja2 import StrictUndefined, Template
 
 from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
 
 
 def parse_regex_actions(
@@ -45,7 +41,6 @@ def format_observation_messages(
     *,
     observation_template: str,
     template_vars: dict | None = None,
-    multimodal_regex: str = "",
 ) -> list[dict]:
     """Format execution outputs into user observation messages."""
     results = []
@@ -64,7 +59,5 @@ def format_observation_messages(
                 **output.get("extra", {}),
             },
         }
-        if multimodal_regex:
-            msg = expand_multimodal_content(msg, pattern=multimodal_regex)
         results.append(msg)
     return results
