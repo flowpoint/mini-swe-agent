@@ -10,6 +10,7 @@ Most behavior belongs in [YAML configuration](yaml_configuration.md). This page 
 | `MSWEA_MINI_CONFIG_PATH` | Replace the implicit `mini.yaml` path used when no `-c` option is supplied. |
 | `MSWEA_CONFIG_DIR` | Add a directory searched for named YAML configuration files. |
 | `MSWEA_GLOBAL_CONFIG_DIR` | Change the Linux directory used for the default trajectory and inspector state. |
+| `XDG_CONFIG_HOME` | Set the base configuration directory; defaults to `~/.config`. |
 | `MSWEA_GLOBAL_CALL_LIMIT` | Bound model calls across agent instances in the current Python process; `0` disables it. |
 | `MSWEA_SILENT_STARTUP` | Suppress the package startup banner when set to a non-empty value. |
 | `MSWEA_INSPECTOR_STYLE_PATH` | Select an alternate trajectory-inspector stylesheet. |
@@ -46,7 +47,7 @@ Use per-agent `step_limit` and `wall_time_limit_seconds` for normal runs. `MSWEA
 
 ## Paths
 
-The default Linux configuration directory comes from `platformdirs` and is normally:
+On Linux, the default configuration directory is `$XDG_CONFIG_HOME/mini-swe-agent`, or:
 
 ```text
 ~/.config/mini-swe-agent

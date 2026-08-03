@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import typer
 
 from minisweagent.run.utilities.inspector import TrajectoryInspector, main
 
@@ -552,7 +551,7 @@ def test_main_with_directory_no_trajectories(mock_run):
         (temp_path / "other.json").write_text('{"not": "trajectory"}')
         (temp_path / "readme.txt").write_text("some text")
 
-        with pytest.raises(typer.BadParameter, match="No trajectory files found"):
+        with pytest.raises(ValueError, match="No trajectory files found"):
             main(str(temp_dir))
 
         mock_run.assert_not_called()
@@ -563,7 +562,7 @@ def test_main_with_nonexistent_path(mock_run):
     """Test main function with a path that doesn't exist."""
     nonexistent_path = "/this/path/does/not/exist"
 
-    with pytest.raises(typer.BadParameter, match="Path .* does not exist"):
+    with pytest.raises(ValueError, match="Path .* does not exist"):
         main(nonexistent_path)
 
     mock_run.assert_not_called()
@@ -580,7 +579,7 @@ def test_main_with_current_directory_default(mock_run, temp_trajectory_files):
     original_cwd = os.getcwd()
     try:
         os.chdir(str(directory))
-        main(".")  # Explicitly test with "." since default is handled by typer
+        main(".")  # Explicitly test the standard-library CLI default.
         mock_run.assert_called_once()
     finally:
         os.chdir(original_cwd)

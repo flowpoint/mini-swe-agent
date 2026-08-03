@@ -1,8 +1,8 @@
 """Run on a single SWE-Bench instance."""
 
+import argparse
+import sys
 from pathlib import Path
-
-import typer
 
 from minisweagent import global_config_dir
 from minisweagent.agents import get_agent
@@ -20,42 +20,39 @@ from minisweagent.utils.serialize import UNSET, recursive_merge
 DEFAULT_OUTPUT_FILE = global_config_dir / "last_swebench_single_run.traj.json"
 DEFAULT_CONFIG_FILE = builtin_config_dir / "benchmarks" / "swebench.yaml"
 
-app = typer.Typer(rich_markup_mode="rich", add_completion=False)
-
 _CONFIG_SPEC_HELP_TEXT = """Path to config files, filenames, or key-value pairs.
 
-[bold red]IMPORTANT:[/bold red] [red]If you set this option, the default config file will not be used.[/red]
-So you need to explicitly set it e.g., with [bold green]-c swebench.yaml <other options>[/bold green]
+IMPORTANT: If you set this option, the default config file will not be used.
+So you need to explicitly set it, for example with -c swebench.yaml <other options>.
 
 Multiple configs will be recursively merged.
 
 Examples:
 
-[bold red]-c model.model_kwargs.temperature=0[/bold red] [red]You forgot to add the default config file! See above.[/red]
+-c model.model_kwargs.temperature=0  You forgot to add the default config file! See above.
 
-[bold green]-c swebench.yaml -c model.model_kwargs.temperature=0.5[/bold green]
+-c swebench.yaml -c model.model_kwargs.temperature=0.5
 
-[bold green]-c swebench.yaml -c agent.mode=yolo[/bold green]
+-c swebench.yaml -c agent.mode=yolo
 """
 
 
-# fmt: off
-@app.command()
 def main(
-    subset: str = typer.Option("lite", "--subset", help="SWEBench subset to use or path to a dataset", rich_help_panel="Data selection"),
-    split: str = typer.Option("dev", "--split", help="Dataset split", rich_help_panel="Data selection"),
-    instance_spec: str = typer.Option(0, "-i", "--instance", help="SWE-Bench instance ID or index", rich_help_panel="Data selection"),
-    model_name: str | None = typer.Option(None, "-m", "--model", help="Model to use", rich_help_panel="Basic"),
-    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'llamacpp')", rich_help_panel="Advanced"),
-    agent_class: str | None = typer.Option(None, "--agent-class", help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')", rich_help_panel="Advanced"),
-    yolo: bool = typer.Option(False, "-y", "--yolo", help="Run without confirmation"),
-    cost_limit: float | None = typer.Option(None, "-l", "--cost-limit", help="Cost limit. Set to 0 to disable."),
-    config_spec: list[str] = typer.Option([str(DEFAULT_CONFIG_FILE)], "-c", "--config", help=_CONFIG_SPEC_HELP_TEXT, rich_help_panel="Basic"),
-    exit_immediately: bool = typer.Option(False, "--exit-immediately", help="Exit immediately when the agent wants to finish instead of prompting.", rich_help_panel="Advanced"),
-    output: Path | None = typer.Option(DEFAULT_OUTPUT_FILE, "-o", "--output", help="Output trajectory file", rich_help_panel="Basic"),
+    subset: str = "lite",
+    split: str = "dev",
+    instance_spec: str = "0",
+    model_name: str | None = None,
+    model_class: str | None = None,
+    agent_class: str | None = None,
+    yolo: bool = False,
+    cost_limit: float | None = None,
+    config_spec: list[str] | None = None,
+    exit_immediately: bool = False,
+    output: Path | None = DEFAULT_OUTPUT_FILE,
 ) -> None:
-    # fmt: on
     """Run on a single SWE-Bench instance."""
+    if config_spec is None:
+        config_spec = [str(DEFAULT_CONFIG_FILE)]
     dataset_path = DATASET_MAPPING.get(subset, subset)
     logger.info(f"Loading dataset from {dataset_path}, split {split}...")
     try:
@@ -66,8 +63,8 @@ def main(
     except ModuleNotFoundError as e:
         if str(e) != SWEBENCH_DEPENDENCY_ERROR:
             raise
-        typer.echo(SWEBENCH_DEPENDENCY_ERROR, err=True)
-        raise typer.Exit(code=1) from None
+        print(SWEBENCH_DEPENDENCY_ERROR, file=sys.stderr)
+        raise SystemExit(1) from None
     if instance_spec.isnumeric():
         instance_spec = sorted(instances.keys())[int(instance_spec)]
     instance: dict = instances[instance_spec]  # type: ignore
@@ -99,5 +96,34 @@ def main(
     agent.run(instance["problem_statement"])
 
 
+def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
+    parser.add_argument("--subset", default="lite", help="SWE-Bench subset to use or path to a dataset")
+    parser.add_argument("--split", default="dev", help="Dataset split")
+    parser.add_argument("-i", "--instance", dest="instance_spec", default="0", help="SWE-Bench instance ID or index")
+    parser.add_argument("-m", "--model", dest="model_name", help="Model to use")
+    parser.add_argument("--model-class", help="Model class to use (e.g., 'llamacpp')")
+    parser.add_argument(
+        "--agent-class",
+        help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
+    )
+    parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
+    parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
+    parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
+    parser.add_argument(
+        "--exit-immediately",
+        action="store_true",
+        help="Exit immediately when the agent wants to finish instead of prompting.",
+    )
+    parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT_FILE, help="Output trajectory file")
+    return parser
+
+
+def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
+    """Parse command-line arguments and run the single-instance benchmark."""
+    main(**vars(_build_parser(prog).parse_args(argv)))
+    return 0
+
+
 if __name__ == "__main__":
-    app()
+    raise SystemExit(app())

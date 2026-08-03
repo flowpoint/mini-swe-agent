@@ -3,11 +3,11 @@
 """Run mini-SWE-agent in your local environment. This is the default executable `mini`."""
 # Read this first: https://mini-swe-agent.com/latest/usage/mini/  (usage)
 
+import argparse
 import os
 from pathlib import Path
 from typing import Any
 
-import typer
 from rich.console import Console
 
 from minisweagent import global_config_dir
@@ -24,47 +24,70 @@ DEFAULT_OUTPUT_FILE = global_config_dir / "last_mini_run.traj.json"
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
 
-[not dim]
-More information about the usage: [bold green]https://mini-swe-agent.com/latest/usage/mini/[/bold green]
-[/not dim]
+More information about the usage:
+https://mini-swe-agent.com/latest/usage/mini/
 """
 
 _CONFIG_SPEC_HELP_TEXT = """Path to config files, filenames, or key-value pairs.
 
-[bold red]IMPORTANT:[/bold red] [red]If you set this option, the default config file will not be used.[/red]
-So you need to explicitly set it e.g., with [bold green]-c mini.yaml <other options>[/bold green]
+IMPORTANT: If you set this option, the default config file will not be used.
+So you need to explicitly set it, for example with -c mini.yaml <other options>.
 
 Multiple configs will be recursively merged.
 
 Examples:
 
-[bold red]-c model.model_kwargs.temperature=0[/bold red] [red]You forgot to add the default config file! See above.[/red]
+-c model.model_kwargs.temperature=0  You forgot to add the default config file! See above.
 
-[bold green]-c mini.yaml -c model.model_kwargs.temperature=0.5[/bold green]
+-c mini.yaml -c model.model_kwargs.temperature=0.5
 
-[bold green]-c swebench.yaml agent.mode=yolo[/bold green]
+-c swebench.yaml agent.mode=yolo
 """
 
 console = Console(highlight=False)
-app = typer.Typer(rich_markup_mode="rich")
 
 
-# fmt: off
-@app.command(help=_HELP_TEXT)
+def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description=_HELP_TEXT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("-m", "--model", dest="model_name", help="Model to use")
+    parser.add_argument("--model-class", help="Model class to use (supported: 'llamacpp')")
+    parser.add_argument(
+        "--agent-class",
+        help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
+    )
+    parser.add_argument("--environment-class", help="Environment class to use: 'local' or 'docker'")
+    parser.add_argument("-t", "--task", help="Task/problem statement")
+    parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
+    parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
+    parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
+    parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT_FILE, help="Output trajectory file")
+    parser.add_argument(
+        "--exit-immediately",
+        action="store_true",
+        help="Exit immediately when the agent wants to finish instead of prompting.",
+    )
+    return parser
+
+
 def main(
-    model_name: str | None = typer.Option(None, "-m", "--model", help="Model to use",),
-    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (supported: 'llamacpp')", rich_help_panel="Advanced"),
-    agent_class: str | None = typer.Option(None, "--agent-class", help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')", rich_help_panel="Advanced"),
-    environment_class: str | None = typer.Option(None, "--environment-class", help="Environment class to use: 'local' or 'docker'", rich_help_panel="Advanced"),
-    task: str | None = typer.Option(None, "-t", "--task", help="Task/problem statement", show_default=False),
-    yolo: bool = typer.Option(False, "-y", "--yolo", help="Run without confirmation"),
-    cost_limit: float | None = typer.Option(None, "-l", "--cost-limit", help="Cost limit. Set to 0 to disable."),
-    config_spec: list[str] = typer.Option([str(DEFAULT_CONFIG_FILE)], "-c", "--config", help=_CONFIG_SPEC_HELP_TEXT),
-    output: Path | None = typer.Option(DEFAULT_OUTPUT_FILE, "-o", "--output", help="Output trajectory file"),
-    exit_immediately: bool = typer.Option(False, "--exit-immediately", help="Exit immediately when the agent wants to finish instead of prompting.", rich_help_panel="Advanced"),
+    model_name: str | None = None,
+    model_class: str | None = None,
+    agent_class: str | None = None,
+    environment_class: str | None = None,
+    task: str | None = None,
+    yolo: bool = False,
+    cost_limit: float | None = None,
+    config_spec: list[str] | None = None,
+    output: Path | None = DEFAULT_OUTPUT_FILE,
+    exit_immediately: bool = False,
 ) -> Any:
-    # fmt: on
     # Build the config from the command line arguments
+    if config_spec is None:
+        config_spec = [str(DEFAULT_CONFIG_FILE)]
     console.print(f"Building agent config from specs: [bold green]{config_spec}[/bold green]")
     configs = [get_config_from_spec(spec) for spec in config_spec]
     configs.append({
@@ -102,5 +125,11 @@ def main(
     return agent
 
 
+def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
+    """Parse command-line arguments and run the agent."""
+    main(**vars(_build_parser(prog).parse_args(argv)))
+    return 0
+
+
 if __name__ == "__main__":
-    app()
+    raise SystemExit(app())

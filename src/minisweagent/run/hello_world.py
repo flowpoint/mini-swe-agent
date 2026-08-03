@@ -2,11 +2,11 @@
 For a more complete example, see mini.py
 """
 
+import argparse
 import logging
 import os
 from pathlib import Path
 
-import typer
 import yaml
 
 from minisweagent import package_dir
@@ -14,21 +14,29 @@ from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.llamacpp_model import LlamaCppModel
 
-app = typer.Typer()
 
-
-@app.command()
-def main(
-    task: str = typer.Option(..., "-t", "--task", help="Task/problem statement", show_default=False, prompt=True),
-    model_name: str = typer.Option(
-        os.getenv("MSWEA_MODEL_NAME", "local"),
+def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
+    parser.add_argument("-t", "--task", help="Task/problem statement")
+    parser.add_argument(
         "-m",
         "--model",
+        dest="model_name",
         help="llama.cpp model alias (defaults to MSWEA_MODEL_NAME or local)",
-        prompt="What model do you want to use?",
-    ),
-    base_url: str = typer.Option("http://127.0.0.1:8080/v1", "--base-url", help="llama.cpp OpenAI API root"),
+    )
+    parser.add_argument("--base-url", default="http://127.0.0.1:8080/v1", help="llama.cpp OpenAI API root")
+    return parser
+
+
+def main(
+    task: str | None = None,
+    model_name: str | None = None,
+    base_url: str = "http://127.0.0.1:8080/v1",
 ) -> DefaultAgent:
+    if task is None:
+        task = input("Task/problem statement: ")
+    if model_name is None:
+        model_name = input("What model do you want to use? ") or os.getenv("MSWEA_MODEL_NAME", "local")
     logging.basicConfig(level=logging.DEBUG)
     agent = DefaultAgent(
         LlamaCppModel(
@@ -43,5 +51,11 @@ def main(
     return agent
 
 
+def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
+    """Parse command-line arguments and run the example agent."""
+    main(**vars(_build_parser(prog).parse_args(argv)))
+    return 0
+
+
 if __name__ == "__main__":
-    app()
+    raise SystemExit(app())

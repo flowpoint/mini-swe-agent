@@ -2,16 +2,16 @@
 """
 Simple trajectory inspector for browsing agent conversation trajectories.
 
-More information about the usage: [bold green] https://mini-swe-agent.com/latest/usage/inspector/ [/bold green].
+More information about the usage: https://mini-swe-agent.com/latest/usage/inspector/.
 """
 
+import argparse
 import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 
-import typer
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -36,9 +36,6 @@ def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
     if current_step:
         steps.append(current_step)
     return steps
-
-
-app = typer.Typer(rich_markup_mode="rich", add_completion=False)
 
 
 class BindingCommandProvider(Provider):
@@ -292,11 +289,7 @@ class TrajectoryInspector(App):
         self._open_in_jless(self.trajectory_files[self.i_trajectory])
 
 
-@app.command(help=__doc__)
-def main(
-    path: str = typer.Argument(".", help="Directory to search for trajectory files or specific trajectory file"),
-    reasoning: bool = typer.Option(True, "--reasoning/--no-reasoning", help="Show reasoning content"),
-) -> None:
+def main(path: str = ".", reasoning: bool = True) -> None:
     path_obj = Path(path)
 
     if path_obj.is_file():
@@ -304,13 +297,34 @@ def main(
     elif path_obj.is_dir():
         trajectory_files = sorted(path_obj.rglob("*.traj.json"))
         if not trajectory_files:
-            raise typer.BadParameter(f"No trajectory files found in '{path}'")
+            raise ValueError(f"No trajectory files found in '{path}'")
     else:
-        raise typer.BadParameter(f"Error: Path '{path}' does not exist")
+        raise ValueError(f"Error: Path '{path}' does not exist")
 
     inspector = TrajectoryInspector(trajectory_files, show_reasoning=reasoning)
     inspector.run()
 
 
+def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
+    parser.add_argument("path", nargs="?", default=".", help="Directory or trajectory file to inspect")
+    reasoning = parser.add_mutually_exclusive_group()
+    reasoning.add_argument(
+        "--reasoning", dest="reasoning", action="store_true", default=True, help="Show reasoning content"
+    )
+    reasoning.add_argument("--no-reasoning", dest="reasoning", action="store_false", help="Hide reasoning content")
+    return parser
+
+
+def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
+    parser = _build_parser(prog)
+    args = parser.parse_args(argv)
+    try:
+        main(args.path, args.reasoning)
+    except ValueError as e:
+        parser.error(str(e))
+    return 0
+
+
 if __name__ == "__main__":
-    app()
+    raise SystemExit(app())

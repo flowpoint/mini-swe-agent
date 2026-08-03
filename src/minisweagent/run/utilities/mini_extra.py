@@ -29,18 +29,20 @@ def get_docstring() -> str:
     return "\n".join(lines)
 
 
-def main():
-    args = sys.argv[1:]
+def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
 
     if len(args) == 0 or len(args) == 1 and args[0] in ["-h", "--help"]:
-        return Console().print(get_docstring())
+        Console().print(get_docstring())
+        return 0
 
     for module_path, aliases, _ in subcommands:
         if args[0] in aliases:
-            return import_module(module_path).app(args[1:], prog_name=f"mini-extra {aliases[0]}")
+            return import_module(module_path).app(args[1:], prog=f"mini-extra {aliases[0]}")
 
-    return Console().print(get_docstring())
+    Console().print(get_docstring())
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

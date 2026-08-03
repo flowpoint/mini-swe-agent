@@ -3,16 +3,17 @@
 """Run mini-SWE-agent on SWE-bench instances in batch mode."""
 # Read this first: https://mini-swe-agent.com/latest/usage/swebench/  (usage docs)
 
+import argparse
 import concurrent.futures
 import json
 import random
 import re
+import sys
 import threading
 import time
 import traceback
 from pathlib import Path
 
-import typer
 from jinja2 import StrictUndefined, Template
 from rich.live import Live
 
@@ -27,25 +28,24 @@ from minisweagent.utils.serialize import UNSET, recursive_merge
 
 _HELP_TEXT = """Run mini-SWE-agent on SWEBench instances.
 
-[not dim]
-More information about the usage: [bold green]https://mini-swe-agent.com/latest/usage/swebench/[/bold green]
-[/not dim]
+More information about the usage:
+https://mini-swe-agent.com/latest/usage/swebench/
 """
 
 _CONFIG_SPEC_HELP_TEXT = """Path to config files, filenames, or key-value pairs.
 
-[bold red]IMPORTANT:[/bold red] [red]If you set this option, the default config file will not be used.[/red]
-So you need to explicitly set it e.g., with [bold green]-c swebench.yaml <other options>[/bold green]
+IMPORTANT: If you set this option, the default config file will not be used.
+So you need to explicitly set it, for example with -c swebench.yaml <other options>.
 
 Multiple configs will be recursively merged.
 
 Examples:
 
-[bold red]-c model.model_kwargs.temperature=0[/bold red] [red]You forgot to add the default config file! See above.[/red]
+-c model.model_kwargs.temperature=0  You forgot to add the default config file! See above.
 
-[bold green]-c swebench.yaml -c model.model_kwargs.temperature=0.5[/bold green]
+-c swebench.yaml -c model.model_kwargs.temperature=0.5
 
-[bold green]-c swebench.yaml -c agent.step_limit=50[/bold green]
+-c swebench.yaml -c agent.step_limit=50
 """
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "benchmarks" / "swebench.yaml"
@@ -60,7 +60,6 @@ DATASET_MAPPING = {
     "rebench": "nebius/SWE-rebench",
 }
 
-app = typer.Typer(rich_markup_mode="rich", add_completion=False)
 _OUTPUT_FILE_LOCK = threading.Lock()
 SWEBENCH_DEPENDENCY_ERROR = (
     "SWE-bench support requires the optional dependency group:\npip install 'mini-swe-agent[swebench]'"
@@ -208,22 +207,21 @@ def filter_instances(
     return instances
 
 
-# fmt: off
-@app.command(help=_HELP_TEXT)
 def main(
-    subset: str = typer.Option("lite", "--subset", help="SWEBench subset to use or path to a dataset", rich_help_panel="Data selection"),
-    split: str = typer.Option("dev", "--split", help="Dataset split", rich_help_panel="Data selection"),
-    slice_spec: str = typer.Option("", "--slice", help="Slice specification (e.g., '0:5' for first 5 instances)", rich_help_panel="Data selection"),
-    filter_spec: str = typer.Option("", "--filter", help="Filter instance IDs by regex", rich_help_panel="Data selection"),
-    shuffle: bool = typer.Option(False, "--shuffle", help="Shuffle instances", rich_help_panel="Data selection"),
-    output: str = typer.Option("", "-o", "--output", help="Output directory", rich_help_panel="Basic"),
-    workers: int = typer.Option(1, "-w", "--workers", help="Number of worker threads for parallel processing", rich_help_panel="Basic"),
-    model: str | None = typer.Option(None, "-m", "--model", help="Model to use", rich_help_panel="Basic"),
-    model_class: str | None = typer.Option(None, "--model-class", help="Model class to use (e.g., 'llamacpp')", rich_help_panel="Advanced"),
-    redo_existing: bool = typer.Option(False, "--redo-existing", help="Redo existing instances", rich_help_panel="Data selection"),
-    config_spec: list[str] = typer.Option([str(DEFAULT_CONFIG_FILE)], "-c", "--config", help=_CONFIG_SPEC_HELP_TEXT, rich_help_panel="Basic"),
+    subset: str = "lite",
+    split: str = "dev",
+    slice_spec: str = "",
+    filter_spec: str = "",
+    shuffle: bool = False,
+    output: str = "",
+    workers: int = 1,
+    model: str | None = None,
+    model_class: str | None = None,
+    redo_existing: bool = False,
+    config_spec: list[str] | None = None,
 ) -> None:
-    # fmt: on
+    if config_spec is None:
+        config_spec = [str(DEFAULT_CONFIG_FILE)]
     dataset_path = DATASET_MAPPING.get(subset, subset)
     logger.info(f"Loading dataset {dataset_path}, split {split}...")
     try:
@@ -231,8 +229,8 @@ def main(
     except ModuleNotFoundError as e:
         if str(e) != SWEBENCH_DEPENDENCY_ERROR:
             raise
-        typer.echo(SWEBENCH_DEPENDENCY_ERROR, err=True)
-        raise typer.Exit(code=1) from None
+        print(SWEBENCH_DEPENDENCY_ERROR, file=sys.stderr)
+        raise SystemExit(1) from None
 
     output_path = Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -284,5 +282,37 @@ def main(
                 process_futures(futures)
 
 
+def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=prog,
+        description=_HELP_TEXT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--subset", default="lite", help="SWE-bench subset to use or path to a dataset")
+    parser.add_argument("--split", default="dev", help="Dataset split")
+    parser.add_argument("--slice", dest="slice_spec", default="", help="Slice specification (for example, '0:5')")
+    parser.add_argument("--filter", dest="filter_spec", default="", help="Filter instance IDs by regex")
+    parser.add_argument("--shuffle", action="store_true", help="Shuffle instances")
+    parser.add_argument("-o", "--output", default="", help="Output directory")
+    parser.add_argument("-w", "--workers", type=int, default=1, help="Number of worker threads")
+    parser.add_argument("-m", "--model", help="Model to use")
+    parser.add_argument("--model-class", help="Model class to use (for example, 'llamacpp')")
+    parser.add_argument("--redo-existing", action="store_true", help="Redo existing instances")
+    parser.add_argument(
+        "-c",
+        "--config",
+        dest="config_spec",
+        action="append",
+        help=_CONFIG_SPEC_HELP_TEXT,
+    )
+    return parser
+
+
+def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
+    args = _build_parser(prog).parse_args(argv)
+    main(**vars(args))
+    return 0
+
+
 if __name__ == "__main__":
-    app()
+    raise SystemExit(app())

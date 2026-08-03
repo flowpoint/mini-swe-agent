@@ -26,7 +26,7 @@ def _run_with_removed_dependencies(code: str, tmp_path: Path) -> subprocess.Comp
     env["PYTHONPATH"] = os.pathsep.join(pythonpath)
     bootstrap = """
 import sys
-sys.modules.update({"litellm": None, "openai": None, "datasets": None})
+sys.modules.update({"datasets": None, "litellm": None, "openai": None, "platformdirs": None, "typer": None})
 """
     return subprocess.run(
         [sys.executable, "-c", textwrap.dedent(bootstrap + code)],
@@ -55,11 +55,20 @@ print("import-ok")
 def test_main_cli_help_does_not_require_datasets(tmp_path):
     result = _run_with_removed_dependencies(
         """
-from typer.testing import CliRunner
+import io
+from contextlib import redirect_stdout
+
 from minisweagent.run.mini import app
-result = CliRunner().invoke(app, ["--help"])
-assert result.exit_code == 0, result.output
-assert "Run mini-SWE-agent in your local environment." in result.output
+
+stdout = io.StringIO()
+try:
+    with redirect_stdout(stdout):
+        app(["--help"])
+except SystemExit as e:
+    assert e.code == 0
+else:
+    raise AssertionError("Expected --help to exit")
+assert "Run mini-SWE-agent in your local environment." in stdout.getvalue()
 """,
         tmp_path,
     )

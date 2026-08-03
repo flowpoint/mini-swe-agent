@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 from typing import Any, Protocol
 
-from platformdirs import user_config_dir
 from rich.console import Console
 
 from minisweagent.utils.log import logger
@@ -22,7 +21,8 @@ from minisweagent.utils.log import logger
 package_dir = Path(__file__).resolve().parent
 
 
-global_config_dir = Path(os.getenv("MSWEA_GLOBAL_CONFIG_DIR") or user_config_dir("mini-swe-agent"))
+_config_home = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
+global_config_dir = Path(os.getenv("MSWEA_GLOBAL_CONFIG_DIR") or _config_home / "mini-swe-agent")
 global_config_dir.mkdir(parents=True, exist_ok=True)
 
 if not os.getenv("MSWEA_SILENT_STARTUP"):

@@ -312,16 +312,14 @@ def test_mini_help():
     assert "--output" in clean_output
 
 
-def test_mini_help_with_typer_runner():
-    """Test help functionality using typer's test runner."""
-    from typer.testing import CliRunner
+def test_mini_help_with_argparse(capsys):
+    """Test help functionality through the standard-library parser."""
+    with pytest.raises(SystemExit) as exc_info:
+        app(["--help"])
 
-    runner = CliRunner()
-    result = runner.invoke(app, ["--help"])
-
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
     # Strip ANSI color codes for reliable text matching
-    clean_output = strip_ansi_codes(result.stdout)
+    clean_output = strip_ansi_codes(capsys.readouterr().out)
     assert "Run mini-SWE-agent in your local environment." in clean_output
     assert "--help" in clean_output
     assert "--config" in clean_output
@@ -499,10 +497,8 @@ def test_no_exit_immediately_flag_sets_confirm_exit_true():
         assert agent.config.confirm_exit is True
 
 
-def test_exit_immediately_flag_with_typer_runner():
-    """Test --exit-immediately flag using typer's test runner."""
-    from typer.testing import CliRunner
-
+def test_exit_immediately_flag_with_cli_adapter():
+    """Test --exit-immediately through the standard-library CLI adapter."""
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
@@ -522,10 +518,10 @@ def test_exit_immediately_flag_with_typer_runner():
         mock_agent.messages = []
         mock_get_agent.return_value = mock_agent
 
-        runner = CliRunner()
-        result = runner.invoke(app, ["--task", "Test task", "--exit-immediately", "--model", "test-model"])
+        assert app(
+            ["--task", "Test task", "--exit-immediately", "--model", "test-model"]
+        ) == 0
 
-        assert result.exit_code == 0
         mock_get_agent.assert_called_once()
         args, kwargs = mock_get_agent.call_args
         # The config (third positional arg) should contain confirm_exit
@@ -534,8 +530,6 @@ def test_exit_immediately_flag_with_typer_runner():
 
 def test_output_file_is_created(tmp_path):
     """Test that output trajectory file is created when --output is specified."""
-    from typer.testing import CliRunner
-
     output_file = tmp_path / "test_traj.json"
 
     # Create a temporary config file
@@ -599,9 +593,7 @@ def test_output_file_is_created(tmp_path):
         }
         mock_get_env.return_value = mock_environment
 
-        runner = CliRunner()
-        result = runner.invoke(
-            app,
+        assert app(
             [
                 "--task",
                 "Test task",
@@ -612,9 +604,5 @@ def test_output_file_is_created(tmp_path):
                 "--config",
                 str(config_file),
             ],
-        )
-
-        if result.exit_code != 0:
-            print(f"Error output: {result.output}")
-        assert result.exit_code == 0
+        ) == 0
         assert output_file.exists(), f"Output file {output_file} was not created"

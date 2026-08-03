@@ -3,7 +3,7 @@
 1. Target python 3.10 or higher
 2. Use python with type annotations. Use `list` instead of `List`.
 3. Use `pathlib` instead of `os.path`. Use `Path.read_text()` over `with ...open()` constructs.
-4. Use `typer` to add interfaces
+4. Use `argparse` for command-line interfaces.
 5. Keep code comments to a minimum and only highlight particularly logically challenging things
 6. Do not append to the README unless specifically requested
 7. Use `jinja` for formatting templates
