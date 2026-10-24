@@ -4,44 +4,30 @@
 to invoke other command line utilities like running benchmarks and inspecting trajectories.
 """
 
+import argparse
 import sys
 from importlib import import_module
 
-from rich.console import Console
-
-subcommands = [
-    ("minisweagent.run.utilities.inspector", ["inspect", "i", "inspector"], "Run inspector (browse trajectories)"),
-    ("minisweagent.run.benchmarks.swebench", ["swebench"], "Evaluate on SWE-bench (batch mode)"),
-    ("minisweagent.run.benchmarks.swebench_single", ["swebench-single"], "Evaluate on SWE-bench (single instance)"),
-]
-
-
-def get_docstring() -> str:
-    lines = [
-        "This is the [yellow]central entry point for all extra commands[/yellow] from mini-swe-agent.",
-        "",
-        "Available sub-commands:",
-        "",
-    ]
-    for _, aliases, description in subcommands:
-        alias_text = " or ".join(f"[bold green]{alias}[/bold green]" for alias in aliases)
-        lines.append(f"  {alias_text}: {description}")
-    return "\n".join(lines)
+SUBCOMMANDS = {
+    "inspect": ("utilities.inspector", "Browse trajectories"),
+    "swebench": ("benchmarks.swebench", "Run SWE-bench (batch mode)"),
+    "swebench-single": ("benchmarks.swebench_single", "Run SWE-bench (single instance)"),
+}
 
 
 def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run extra mini-SWE-agent commands.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    for name, (_, description) in SUBCOMMANDS.items():
+        subparsers.add_parser(name, help=description, add_help=False)
     args = sys.argv[1:] if argv is None else argv
-
-    if len(args) == 0 or len(args) == 1 and args[0] in ["-h", "--help"]:
-        Console().print(get_docstring())
+    if not args:
+        parser.print_help()
         return 0
-
-    for module_path, aliases, _ in subcommands:
-        if args[0] in aliases:
-            return import_module(module_path).app(args[1:], prog=f"mini-extra {aliases[0]}")
-
-    Console().print(get_docstring())
-    return 0
+    parsed, remaining = parser.parse_known_args(args)
+    return import_module(f"minisweagent.run.{SUBCOMMANDS[parsed.command][0]}").app(
+        remaining, prog=f"{parser.prog} {parsed.command}"
+    )
 
 
 if __name__ == "__main__":

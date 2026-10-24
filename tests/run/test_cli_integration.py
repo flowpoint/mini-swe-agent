@@ -1,11 +1,13 @@
 import re
 import subprocess
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
+from minisweagent.environments.local import LocalEnvironment
 from minisweagent.run.mini import DEFAULT_CONFIG_FILE, app, main
 
 
@@ -20,14 +22,11 @@ def test_main_starts_without_setup_wizard():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -44,7 +43,6 @@ def test_main_starts_without_setup_wizard():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         mock_get_model.assert_called_once()
@@ -56,14 +54,11 @@ def test_mini_command_calls_run_interactive():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test", "mode": "confirm"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -80,14 +75,13 @@ def test_mini_command_calls_run_interactive():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify get_agent was called
         mock_get_agent.assert_called_once()
         args, kwargs = mock_get_agent.call_args
         assert args[0] == mock_model  # model
-        assert args[1] == mock_environment  # env
+        assert isinstance(args[1], LocalEnvironment)
         # Verify agent.run was called with the task
         mock_agent.run.assert_called_once_with("Test task")
 
@@ -98,15 +92,12 @@ def test_mini_calls_prompt_when_no_task_provided():
         patch("minisweagent.run.mini._multiline_prompt") as mock_prompt,
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_prompt.return_value = "User provided task"
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test", "mode": "confirm"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -123,7 +114,6 @@ def test_mini_calls_prompt_when_no_task_provided():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify prompt was called
@@ -140,14 +130,11 @@ def test_mini_with_explicit_model():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {
             "agent": {"system_template": "test", "mode": "yolo"},
             "env": {},
@@ -168,7 +155,6 @@ def test_mini_with_explicit_model():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify get_model was called (model name is merged into config)
@@ -185,14 +171,11 @@ def test_yolo_mode_sets_correct_agent_config():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -209,7 +192,6 @@ def test_yolo_mode_sets_correct_agent_config():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify get_agent was called with yolo mode in config
@@ -226,14 +208,11 @@ def test_confirm_mode_sets_correct_agent_config():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -250,7 +229,6 @@ def test_confirm_mode_sets_correct_agent_config():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify get_agent was called with no explicit mode (defaults to None)
@@ -267,11 +245,9 @@ def test_cost_limit_zero_is_preserved():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         mock_get_model.return_value = Mock()
-        mock_get_env.return_value = Mock()
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
         mock_agent = Mock()
         mock_get_agent.return_value = mock_agent
@@ -285,7 +261,6 @@ def test_cost_limit_zero_is_preserved():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         assert mock_get_agent.call_args.args[2]["cost_limit"] == 0
@@ -310,6 +285,7 @@ def test_mini_help():
     assert "--task" in clean_output
     assert "--yolo" in clean_output
     assert "--output" in clean_output
+    assert "--environment-class" not in clean_output
 
 
 def test_mini_help_with_argparse(capsys):
@@ -355,18 +331,10 @@ def test_mini_script_help():
     assert "mini-SWE-agent" in result.stdout
 
 
-def test_mini_swe_agent_help():
-    """Test that mini-swe-agent --help works correctly."""
-    result = subprocess.run(
-        ["mini-swe-agent", "--help"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "mini-SWE-agent" in clean_output
+def test_installed_commands_have_no_aliases():
+    assert {
+        entry.name for entry in distribution("mini-swe-agent").entry_points if entry.group == "console_scripts"
+    } == {"mini", "mini-extra"}
 
 
 def test_mini_extra_help():
@@ -380,46 +348,70 @@ def test_mini_extra_help():
 
     assert result.returncode == 0
     clean_output = strip_ansi_codes(result.stdout)
-    assert "central entry point for all extra commands" in clean_output
+    assert "Run extra mini-SWE-agent commands." in clean_output
     assert "inspect" in clean_output
     assert "swebench" in clean_output
 
 
-def test_mini_e_help():
-    """Test that mini-e --help works correctly."""
+@pytest.mark.parametrize(("subcommand", "args"), [("i", []), ("inspector", ["--help"]), ("missing", [])])
+def test_mini_extra_rejects_aliases_and_unknown_commands(subcommand: str, args: list[str]):
     result = subprocess.run(
-        ["mini-e", "--help"],
+        ["mini-extra", subcommand, *args],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
+    assert subcommand in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("subcommand", "option"),
+    [("inspect", "--reasoning"), ("swebench", "--workers"), ("swebench-single", "--instance")],
+)
+def test_mini_extra_subcommand_help(subcommand: str, option: str):
+    """Test that mini-extra subcommands --help work correctly."""
+    result = subprocess.run(
+        ["mini-extra", subcommand, "--help"],
         capture_output=True,
         text=True,
         timeout=10,
     )
 
     assert result.returncode == 0
-    clean_output = strip_ansi_codes(result.stdout)
-    assert "central entry point for all extra commands" in clean_output
+    assert f"usage: mini-extra {subcommand}" in result.stdout
+    assert "--help" in result.stdout
+    assert option in result.stdout
+
+
+def test_mini_rejects_environment_selection(capsys):
+    with pytest.raises(SystemExit) as error:
+        app(["--environment-class", "docker"])
+    assert error.value.code == 2
+    assert "unrecognized arguments: --environment-class docker" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
-    ("subcommand", "aliases"),
+    ("environment_class", "overrides"),
     [
-        ("inspect", ["inspect", "i", "inspector"]),
-        ("swebench", ["swebench"]),
-        ("swebench-single", ["swebench-single"]),
+        ("docker", []),
+        ("minisweagent.environments.docker.DockerEnvironment", []),
+        ("local", ["environment.environment_class=docker"]),
     ],
 )
-def test_mini_extra_subcommand_help(subcommand: str, aliases: list[str]):
-    """Test that mini-extra subcommands --help work correctly."""
-    for alias in aliases:
-        result = subprocess.run(
-            ["mini-extra", alias, "--help"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        assert result.returncode == 0
-        # Just verify that help output is returned (content varies by subcommand)
-        assert len(result.stdout) > 0
+def test_mini_rejects_nonlocal_config_before_loading_model(
+    tmp_path: Path, environment_class: str, overrides: list[str]
+):
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        f"environment:\n  environment_class: {environment_class}\n"
+        "model:\n  model_name: unused\n  model_class: unavailable\n"
+    )
+    with pytest.raises(SystemExit, match="run mini itself inside your container"):
+        main(config_spec=[str(config), *overrides], output=tmp_path / "trajectory.json")
+    assert not (tmp_path / "trajectory.json").exists()
 
 
 def test_exit_immediately_flag_sets_confirm_exit_false():
@@ -427,14 +419,11 @@ def test_exit_immediately_flag_sets_confirm_exit_false():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Create mock agent with config
@@ -453,7 +442,6 @@ def test_exit_immediately_flag_sets_confirm_exit_false():
             exit_immediately=True,  # This should set confirm_exit=False
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify the agent's config has confirm_exit set to False
@@ -465,14 +453,11 @@ def test_no_exit_immediately_flag_sets_confirm_exit_true():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Create mock agent with config
@@ -490,7 +475,6 @@ def test_no_exit_immediately_flag_sets_confirm_exit_true():
             output=None,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )
 
         # Verify the agent's config has confirm_exit set to True
@@ -502,14 +486,11 @@ def test_exit_immediately_flag_with_cli_adapter():
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
     ):
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_environment = Mock()
-        mock_get_env.return_value = mock_environment
         mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
 
         # Setup mock agent instance
@@ -539,7 +520,6 @@ def test_output_file_is_created(tmp_path):
 
     with (
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_environment") as mock_get_env,
         patch("minisweagent.agents.utils.prompt_user.prompt_session.prompt", return_value=""),
         patch("minisweagent.agents.utils.prompt_user._multiline_prompt_session.prompt", return_value=""),
     ):
@@ -565,33 +545,6 @@ def test_output_file_is_created(tmp_path):
         # format_observation_messages returns observation messages
         mock_model.format_observation_messages.return_value = []
         mock_get_model.return_value = mock_model
-
-        # Environment execute raises Submitted when COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT is seen
-        from minisweagent.exceptions import Submitted
-
-        def execute_side_effect(action):
-            raise Submitted(
-                {
-                    "role": "exit",
-                    "content": "done",
-                    "extra": {"exit_status": "Submitted", "submission": "done"},
-                }
-            )
-
-        mock_environment = Mock()
-        mock_environment.config = Mock()
-        mock_environment.config.model_dump.return_value = {}
-        mock_environment.execute.side_effect = execute_side_effect
-        mock_environment.get_template_vars.return_value = {
-            "system": "TestOS",
-            "release": "1.0",
-            "version": "1.0.0",
-            "machine": "x86_64",
-        }
-        mock_environment.serialize.return_value = {
-            "info": {"config": {"environment": {}, "environment_type": "MockEnvironment"}}
-        }
-        mock_get_env.return_value = mock_environment
 
         assert app(
             [

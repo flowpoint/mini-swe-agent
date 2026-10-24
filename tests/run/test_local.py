@@ -1,9 +1,66 @@
+import json
 import re
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 from minisweagent.models.test_models import DeterministicModel, make_output
 from minisweagent.run.mini import DEFAULT_CONFIG_FILE, main
 from tests.conftest import assert_observations_match
+
+
+def test_mini_executes_locally_without_loading_docker(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config = tmp_path / "agent.yaml"
+    config.write_text(
+        json.dumps(
+            {
+                "agent": {"agent_class": "default", "system_template": "Test agent", "instance_template": "{{task}}"},
+                "model": {
+                    "model_class": "deterministic",
+                    "model_name": "deterministic",
+                    "outputs": [
+                        make_output(
+                            "Write", [{"command": 'printf "%s\\n" "$MINI_TEST_VALUE" > result.txt; pwd >> result.txt'}]
+                        ),
+                        make_output("Done", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
+                    ],
+                },
+                "environment": {
+                    "environment_class": "local",
+                    "cwd": str(workspace),
+                    "env": {"MINI_TEST_VALUE": "local"},
+                },
+            }
+        )
+    )
+    trajectory = tmp_path / "trajectory.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys\nfrom minisweagent.run.mini import app\napp(sys.argv[1:])\n"
+            "assert 'minisweagent.environments.docker' not in sys.modules",
+            "-c",
+            str(config),
+            "-t",
+            "Write in the working directory",
+            "-o",
+            str(trajectory),
+        ],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (workspace / "result.txt").read_text() == f"local\n{workspace}\n"
+    info = json.loads(trajectory.read_text())["info"]
+    assert info["exit_status"] == "Submitted"
+    assert info["config"]["environment_type"] == "minisweagent.environments.local.LocalEnvironment"
 
 
 def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
@@ -44,7 +101,6 @@ def test_local_end_to_end(local_test_data):
             cost_limit=10,
             model_class=None,
             agent_class=None,
-            environment_class=None,
         )  # type: ignore
 
     assert agent is not None

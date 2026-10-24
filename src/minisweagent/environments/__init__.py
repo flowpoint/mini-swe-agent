@@ -1,23 +1,23 @@
 """Environment implementations for mini-SWE-agent."""
 
 import copy
+from importlib import import_module
 
 from minisweagent import Environment
-from minisweagent.environments.docker import DockerEnvironment
-from minisweagent.environments.local import LocalEnvironment
 
 _ENVIRONMENT_MAPPING = {
-    "docker": DockerEnvironment,
-    "local": LocalEnvironment,
+    "docker": "minisweagent.environments.docker.DockerEnvironment",
+    "local": "minisweagent.environments.local.LocalEnvironment",
 }
 
 
 def get_environment_class(spec: str) -> type[Environment]:
     try:
-        return _ENVIRONMENT_MAPPING[spec]
+        module, name = _ENVIRONMENT_MAPPING[spec].rsplit(".", 1)
     except KeyError:
         available = ", ".join(sorted(_ENVIRONMENT_MAPPING))
         raise ValueError(f"Unknown environment type: {spec}. Available: {available}") from None
+    return getattr(import_module(module), name)
 
 
 def get_environment(config: dict, *, default_type: str = "") -> Environment:

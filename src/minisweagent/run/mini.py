@@ -16,7 +16,7 @@ from rich.console import Console
 
 from minisweagent.agents import get_agent
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
-from minisweagent.environments import get_environment
+from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
 from minisweagent.run import setup
@@ -31,6 +31,8 @@ DEFAULT_OUTPUT_FILE = _data_home / "mini-swe-agent" / "trajectories" / "latest.t
 
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
+
+Commands run in the same environment as mini. For container isolation, run mini inside the container.
 
 Create a config before running: mini setup
 For a remote server: mini setup --base-url http://host:8080/v1
@@ -52,7 +54,7 @@ Examples:
 
 -c mini.yaml -c model.model_kwargs.temperature=0.5
 
--c swebench.yaml agent.mode=yolo
+-c mini.yaml -c agent.mode=yolo
 """
 
 console = Console(highlight=False)
@@ -91,7 +93,6 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--agent-class",
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
-    parser.add_argument("--environment-class", help="Environment class to use: 'local' or 'docker'")
     parser.add_argument("-t", "--task", help="Task/problem statement")
     parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
     parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
@@ -115,7 +116,6 @@ def main(
     model_name: str | None = None,
     model_class: str | None = None,
     agent_class: str | None = None,
-    environment_class: str | None = None,
     task: str | None = None,
     yolo: bool = False,
     cost_limit: float | None = None,
@@ -149,12 +149,13 @@ def main(
             "model_class": model_class or UNSET,
             "model_name": model_name or UNSET,
         },
-        "environment": {
-            "environment_class": environment_class or UNSET,
-        },
     })
     config = recursive_merge(*configs)
 
+    environment_config = config.get("environment", {})
+    if environment_config.pop("environment_class", "local") != "local":
+        raise SystemExit("mini: only local execution is supported; run mini itself inside your container")
+    env = LocalEnvironment(**environment_config)
     model = get_model(config=config.get("model", {}))
     if isinstance(model, LlamaCppModel):
         model.check_connection(timeout=check_timeout)
@@ -163,7 +164,6 @@ def main(
         run_task = _multiline_prompt()
         console.print("[bold green]Got that, thanks![/bold green]")
 
-    env = get_environment(config.get("environment", {}), default_type="local")
     if output == DEFAULT_OUTPUT_FILE:
         config["agent"]["output_path"] = _new_output_file()
     agent = get_agent(model, env, config.get("agent", {}), default_type="interactive")
