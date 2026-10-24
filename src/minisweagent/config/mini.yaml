@@ -20,7 +20,7 @@ agent:
     </system_information>
   step_limit: 100
   wall_time_limit_seconds: 3600
-  mode: confirm
+  mode: yolo
 
 environment:
   env:

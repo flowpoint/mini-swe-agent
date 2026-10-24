@@ -108,6 +108,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert config["model"]["model_kwargs"] == {"temperature": 0.6, "max_tokens": 1024}
     assert "# top_p: 0.9" in path.read_text()
     assert "#   step_limit: 100" in path.read_text()
+    assert "#   mode: yolo" in path.read_text()
     assert result.stdout.splitlines() == [
         f"api: {url}/v1",
         'model: "test:model"',
@@ -125,7 +126,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert "exactly one fenced" in calls[2][2]["messages"][0]["content"]
     assert not (tmp_path / "data").exists()
 
-    result = run_cli(tmp_path, "-t", "Finish immediately", "--yolo", "--exit-immediately")
+    result = run_cli(tmp_path, "-t", "Finish immediately", "--exit-immediately")
     assert result.returncode == 0, result.stderr
     assert [call[0] for call in calls] == ["GET", "GET", "POST", "GET", "POST"]
     assert calls[3][1] == "/llama/v1/models"
@@ -138,6 +139,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     }
     trajectory = tmp_path / "data/mini-swe-agent/trajectories/latest.traj.json"
     assert json.loads(trajectory.read_text())["info"]["exit_status"] == "Submitted"
+    assert json.loads(trajectory.read_text())["info"]["config"]["agent"]["mode"] == "yolo"
 
 
 def test_setup_generic_api_and_explicit_model(tmp_path: Path, model_api):

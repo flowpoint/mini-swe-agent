@@ -94,7 +94,7 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
     parser.add_argument("-t", "--task", help="Task/problem statement")
-    parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
+    parser.add_argument("-y", "--yolo", action="store_true", help="Run without command confirmation (default; overrides config)")
     parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
     parser.add_argument(

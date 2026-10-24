@@ -39,16 +39,33 @@ def make_text_model(outputs_spec: list[tuple[str, list[dict]]], **kwargs) -> Det
 
 @pytest.fixture
 def default_config():
-    """Load the default fenced-text agent configuration."""
+    """Load the fenced-text agent configuration with explicit confirmation."""
     config_path = Path("src/minisweagent/config/default.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
-    return config["agent"]
+    return {**config["agent"], "mode": "confirm"}
 
 
 @pytest.fixture
 def model_factory(default_config):
     return make_text_model, default_config
+
+
+def test_default_yolo_executes_without_confirmation(tmp_path: Path):
+    agent = InteractiveAgent(
+        model=make_text_model([
+            ("Write", [{"command": "printf executed > result.txt"}]),
+            ("Finish", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
+        ]),
+        env=LocalEnvironment(cwd=str(tmp_path)),
+        system_template="Test agent",
+        instance_template="{{task}}",
+        confirm_exit=False,
+    )
+    assert agent.run("Write a file")["exit_status"] == "Submitted"
+    assert agent.config.mode == "yolo"
+    assert (tmp_path / "result.txt").read_text() == "executed"
+    assert agent.n_calls == 2
 
 
 def test_successful_completion_with_confirmation(model_factory):

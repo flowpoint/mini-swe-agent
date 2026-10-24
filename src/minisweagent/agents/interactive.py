@@ -22,7 +22,7 @@ console = Console(highlight=False)
 
 
 class InteractiveAgentConfig(AgentConfig):
-    mode: Literal["human", "confirm", "yolo"] = "confirm"
+    mode: Literal["human", "confirm", "yolo"] = "yolo"
     """Whether to confirm actions."""
     whitelist_actions: list[str] = []
     """Never confirm actions that match these regular expressions."""

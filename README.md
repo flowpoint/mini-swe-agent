@@ -50,7 +50,7 @@ From the repository you want to modify:
 mini --task "Fix the failing tests and explain the change"
 ```
 
-The default confirmation mode shows each shell command before it runs. For a trusted checkout, confirmation can be disabled:
+The default yolo mode runs shell commands automatically. Set `mode: confirm` under `agent` in your config, or enter `/c` at a prompt, to require confirmation. The `--yolo` flag overrides a configured confirmation mode:
 
 ```bash
 mini --yolo --task "Add regression coverage for the parser"

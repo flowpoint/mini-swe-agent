@@ -24,7 +24,7 @@ model:
     # repeat_penalty: {{ params.get('repeat_penalty', 1.0) | tojson }}  # llama.cpp: discourage repetition when greater than 1.
 
 # agent:
-#   mode: confirm  # confirm: approve commands; yolo: run automatically; human: enter commands.
+#   mode: yolo  # yolo: run automatically (default); confirm: approve commands; human: enter commands.
 #   confirm_exit: true  # Ask for another task when the model finishes.
 #   step_limit: 100  # Maximum model calls per run; 0 disables this limit.
 #   wall_time_limit_seconds: 3600  # Maximum run duration; 0 disables this limit.
