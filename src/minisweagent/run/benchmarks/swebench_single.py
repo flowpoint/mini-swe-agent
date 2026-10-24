@@ -14,6 +14,7 @@ from minisweagent.run.benchmarks.swebench import (
     get_sb_environment,
     load_dataset,
 )
+from minisweagent.run.utilities import nonnegative_float
 from minisweagent.utils.log import logger
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
@@ -33,7 +34,7 @@ Examples:
 
 -c swebench.yaml -c model.model_kwargs.temperature=0.5
 
--c swebench.yaml -c agent.mode=yolo
+-c swebench.yaml -c agent.audit_timeout=0
 """
 
 
@@ -44,7 +45,7 @@ def main(
     model_name: str | None = None,
     model_class: str | None = None,
     agent_class: str | None = None,
-    yolo: bool = False,
+    audit_timeout: float | None = None,
     cost_limit: float | None = None,
     config_spec: list[str] | None = None,
     exit_immediately: bool = False,
@@ -74,7 +75,7 @@ def main(
     configs.append({
         "agent": {
             "agent_class": agent_class or UNSET,
-            "mode": "yolo" if yolo else UNSET,
+            "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
             "cost_limit": cost_limit if cost_limit is not None else UNSET,
             "confirm_exit": False if exit_immediately else UNSET,
             "output_path": output or UNSET,
@@ -107,7 +108,7 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--agent-class",
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
-    parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
+    parser.add_argument("--audit-timeout", type=nonnegative_float, help="Audit seconds per command (default: 0; inf waits for continuation)")
     parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
     parser.add_argument(

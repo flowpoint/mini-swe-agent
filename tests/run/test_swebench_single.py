@@ -48,7 +48,7 @@ def test_swebench_single_cost_limit_zero_is_preserved():
             output=None,
             model_class=None,
             agent_class=None,
-            yolo=False,
+            audit_timeout=None,
             cost_limit=0,
         )
 
@@ -85,7 +85,7 @@ def test_swebench_single_end_to_end(github_test_data, tmp_path, container_execut
             output=output_path,
             model_class=None,
             agent_class=None,
-            yolo=False,
+            audit_timeout=None,
             cost_limit=None,
         )
 
@@ -125,7 +125,7 @@ def test_swebench_single_end_to_end_exit_immediately(github_test_data, tmp_path,
             output=output_path,
             model_class=None,
             agent_class=None,
-            yolo=False,
+            audit_timeout=None,
             cost_limit=None,
         )
 

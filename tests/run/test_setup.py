@@ -108,7 +108,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert config["model"]["model_kwargs"] == {"temperature": 0.6, "max_tokens": 1024}
     assert "# top_p: 0.9" in path.read_text()
     assert "#   step_limit: 100" in path.read_text()
-    assert "#   mode: yolo" in path.read_text()
+    assert "#   audit_timeout: 0" in path.read_text()
     assert result.stdout.splitlines() == [
         f"api: {url}/v1",
         'model: "test:model"',
@@ -139,7 +139,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     }
     trajectory = tmp_path / "data/mini-swe-agent/trajectories/latest.traj.json"
     assert json.loads(trajectory.read_text())["info"]["exit_status"] == "Submitted"
-    assert json.loads(trajectory.read_text())["info"]["config"]["agent"]["mode"] == "yolo"
+    assert json.loads(trajectory.read_text())["info"]["config"]["agent"]["audit_timeout"] == 0
 
 
 def test_setup_generic_api_and_explicit_model(tmp_path: Path, model_api):
@@ -216,7 +216,7 @@ def test_setup_preserves_existing_config_and_honors_config_override(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     assert yaml.safe_load(path.read_text())["model"]["model_name"] == "test:model"
     assert not (tmp_path / "config/mini-swe-agent/mini.yaml").exists()
-    result = run_cli(tmp_path, "-t", "Finish", "--yolo", "--exit-immediately", env_overrides=env)
+    result = run_cli(tmp_path, "-t", "Finish", "--exit-immediately", env_overrides=env)
     assert result.returncode == 0, result.stderr
     assert calls[-1][2]["model"] == "test:model"
 

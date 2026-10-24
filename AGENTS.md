@@ -17,7 +17,7 @@ llama.cpp's OpenAI-compatible endpoint is the primary target. Hosted provider en
 Keep these extension points easy to customize as needed:
 
 - Sampling and prompt tuning.
-- Optional guardrail, permission, and rule checks for each command. When enabled, check every command immediately before execution and honor rejection or failure.
+- Per-command auditing through the replaceable `audit(action)` hook. `audit_timeout` is the objection window: 0 proceeds immediately, finite windows proceed if uninterrupted, and infinity requires explicit continuation. Manual review pauses for Ctrl-C; concurrent auditors can send SIGINT. Honor interruptions before execution and stop an active local command on interruption.
 - Context compaction.
 - Response rendering, including optional syntax highlighting.
 

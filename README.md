@@ -50,10 +50,10 @@ From the repository you want to modify:
 mini --task "Fix the failing tests and explain the change"
 ```
 
-The default yolo mode runs shell commands automatically. Set `mode: confirm` under `agent` in your config, or enter `/c` at a prompt, to require confirmation. The `--yolo` flag overrides a configured confirmation mode:
+The audit timeout controls each command: `0` runs immediately (the default), a positive number waits that many seconds for objections, and `inf` blocks until you explicitly continue. Ctrl-C interrupts; concurrent auditors can send SIGINT. Use `--audit-timeout`, `agent.audit_timeout` in config, or `/audit SECONDS` at a prompt:
 
 ```bash
-mini --yolo --task "Add regression coverage for the parser"
+mini --audit-timeout 3 --task "Add regression coverage for the parser"
 ```
 
 The agent executes real shell commands with your current user's permissions. Review commands carefully and use an isolated working tree for untrusted tasks.

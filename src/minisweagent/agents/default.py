@@ -4,15 +4,16 @@ or https://minimal-agent.com for a tutorial on the basic building principles.
 
 import json
 import logging
+import math
 import time
 import traceback
 from pathlib import Path
 
 from jinja2 import StrictUndefined, Template
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_serializer
 
 from minisweagent import Environment, Model, __version__
-from minisweagent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded
+from minisweagent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded, UserInterruption
 from minisweagent.utils.serialize import recursive_merge
 
 
@@ -33,6 +34,12 @@ class AgentConfig(BaseModel):
     """Exit after this many format errors in a row (0 = no limit)."""
     output_path: Path | None = None
     """Save the trajectory to this path."""
+    audit_timeout: float = Field(default=0.0, ge=0)
+    """Seconds to audit each command: 0 runs immediately; infinity requires explicit continuation."""
+
+    @field_serializer("audit_timeout", when_used="json")
+    def serialize_audit_timeout(self, value: float) -> float | str:
+        return "inf" if math.isinf(value) else value
 
 
 class DefaultAgent:
@@ -153,8 +160,31 @@ class DefaultAgent:
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
-        outputs = [self.env.execute(action) for action in message.get("extra", {}).get("actions", [])]
-        return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        outputs = []
+        try:
+            for action in message.get("extra", {}).get("actions", []):
+                outputs.append(self.execute_action(action))
+        finally:
+            result = self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+        return result
+
+    def execute_action(self, action: dict) -> dict:
+        self.audit(action)
+        return self.env.execute(action)
+
+    def audit(self, action: dict) -> None:
+        """Per-command hook; concurrent auditors can send SIGINT to interrupt the CLI."""
+        if self.config.audit_timeout == 0:
+            return
+        print(f"Audit ({self.config.audit_timeout:g}s; Ctrl-C to interrupt): {action['command']}", flush=True)
+        if math.isinf(self.config.audit_timeout):
+            self.confirm_action(action)
+        else:
+            time.sleep(self.config.audit_timeout)
+
+    def confirm_action(self, action: dict) -> None:
+        if reason := input("Enter to continue, or explain why this command should not run: ").strip():
+            raise UserInterruption({"role": "user", "content": f"Command not executed: {reason}"})
 
     def serialize(self, *extra_dicts) -> dict:
         """Serialize agent state to a json-compatible nested dictionary for saving."""

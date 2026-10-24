@@ -43,7 +43,7 @@ def default_config():
     config_path = Path("src/minisweagent/config/default.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
-    return {**config["agent"], "mode": "confirm"}
+    return {**config["agent"], "audit_timeout": float("inf")}
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def test_default_yolo_executes_without_confirmation(tmp_path: Path):
         confirm_exit=False,
     )
     assert agent.run("Write a file")["exit_status"] == "Submitted"
-    assert agent.config.mode == "yolo"
+    assert agent.config.audit_timeout == 0
     assert (tmp_path / "result.txt").read_text() == "executed"
     assert agent.n_calls == 2
 
@@ -123,7 +123,7 @@ def test_yolo_mode_activation(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/y",  # Enter yolo mode
+            "/audit 0",  # Enter yolo mode
             "",  # This should be ignored since yolo mode is on
             "",  # No new task when agent wants to finish
         ]
@@ -141,7 +141,7 @@ def test_yolo_mode_activation(model_factory):
         info = agent.run("Test yolo mode")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "yolo works\n"
-        assert agent.config.mode == "yolo"
+        assert agent.config.audit_timeout == 0
 
 
 def test_help_command(model_factory):
@@ -169,7 +169,7 @@ def test_help_command(model_factory):
             assert info["exit_status"] == "Submitted"
             assert info["submission"] == "help shown\n"
             # Check that help was printed
-            help_calls = [call for call in mock_print.call_args_list if "/y" in str(call)]
+            help_calls = [call for call in mock_print.call_args_list if "/audit SECONDS" in str(call)]
             assert len(help_calls) > 0
 
 
@@ -272,7 +272,7 @@ def test_multiple_confirmations_and_commands(model_factory):
         [
             "reject first",  # Reject first action
             "/h",  # Show help for second action
-            "/y",  # After help, enter yolo mode
+            "/audit 0",  # After help, enter yolo mode
             "",  # After yolo mode enabled, confirm (but yolo mode will skip future confirmations)
             "",  # No new task when agent wants to finish
         ]
@@ -294,7 +294,7 @@ def test_multiple_confirmations_and_commands(model_factory):
         info = agent.run("Test complex interaction flow")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "complex flow completed\n"
-        assert agent.config.mode == "yolo"  # Should be in yolo mode
+        assert agent.config.audit_timeout == 0  # Should be in yolo mode
         assert agent.n_calls == 2
 
 
@@ -357,7 +357,7 @@ def test_human_mode_switch_to_yolo(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/y",  # Switch to yolo mode from human mode
+            "/audit 0",  # Switch to yolo mode from human mode
             "",  # Confirm action in yolo mode (though no confirmation needed)
             "",  # No new task when agent wants to finish
         ]
@@ -381,7 +381,7 @@ def test_human_mode_switch_to_yolo(model_factory):
         info = agent.run("Test human to yolo switch")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "switched to yolo\n"
-        assert agent.config.mode == "yolo"
+        assert agent.config.audit_timeout == 0
         assert agent.n_calls == 1
 
 
@@ -390,7 +390,7 @@ def test_human_mode_switch_to_confirm(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/c",  # Switch to confirm mode from human mode
+            "/audit inf",  # Switch to confirm mode from human mode
             "",  # Confirm action in confirm mode
             "",  # No new task when agent wants to finish
         ]
@@ -414,7 +414,7 @@ def test_human_mode_switch_to_confirm(model_factory):
         info = agent.run("Test human to confirm switch")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "switched to confirm\n"
-        assert agent.config.mode == "confirm"
+        assert agent.config.audit_timeout == float("inf")
         assert agent.n_calls == 1
 
 
@@ -438,7 +438,7 @@ def test_confirmation_mode_switch_to_human_with_rejection(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "confirm",
+                "audit_timeout": float("inf"),
             },
         )
 
@@ -456,7 +456,7 @@ def test_confirmation_mode_switch_to_yolo_and_continue(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/y",  # Switch to yolo mode and confirm current action
+            "/audit 0",  # Switch to yolo mode and confirm current action
             "",  # No new task when agent wants to finish
         ]
     ):
@@ -472,14 +472,14 @@ def test_confirmation_mode_switch_to_yolo_and_continue(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "confirm",
+                "audit_timeout": float("inf"),
             },
         )
 
         info = agent.run("Test confirm to yolo switch")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "switched and continued\n"
-        assert agent.config.mode == "yolo"
+        assert agent.config.audit_timeout == 0
 
 
 def test_mode_switch_during_keyboard_interrupt(model_factory):
@@ -498,7 +498,7 @@ def test_mode_switch_during_keyboard_interrupt(model_factory):
         env=LocalEnvironment(),
         **{
             **config,
-            "mode": "confirm",
+            "audit_timeout": float("inf"),
         },
     )
 
@@ -515,7 +515,7 @@ def test_mode_switch_during_keyboard_interrupt(model_factory):
 
     with mock_prompts(
         [
-            "/y",  # Switch to yolo mode during interrupt
+            "/audit 0",  # Switch to yolo mode during interrupt
             "",  # Confirm subsequent actions (though yolo mode won't ask)
         ]
     ):
@@ -524,7 +524,7 @@ def test_mode_switch_during_keyboard_interrupt(model_factory):
 
     assert info["exit_status"] == "Submitted"
     assert info["submission"] == "recovered after mode switch\n"
-    assert agent.config.mode == "yolo"
+    assert agent.config.audit_timeout == 0
     # Should have interruption message
     interrupt_messages = [msg for msg in agent.messages if "Temporary interruption caught" in get_text(msg)]
     assert len(interrupt_messages) == 1
@@ -535,7 +535,7 @@ def test_already_in_mode_behavior(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/c",  # Try to switch to confirm mode when already in confirm mode
+            "/audit inf",  # Try to switch to confirm mode when already in confirm mode
             "",  # Confirm action after the "already in mode" recursive prompt
             "",  # No new task when agent wants to finish
         ]
@@ -552,14 +552,14 @@ def test_already_in_mode_behavior(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "confirm",
+                "audit_timeout": float("inf"),
             },
         )
 
         info = agent.run("Test already in mode")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "already in mode\n"
-        assert agent.config.mode == "confirm"
+        assert agent.config.audit_timeout == float("inf")
 
 
 def test_all_mode_transitions_yolo_to_others(model_factory):
@@ -567,7 +567,7 @@ def test_all_mode_transitions_yolo_to_others(model_factory):
     factory, config = model_factory
     with mock_prompts(
         [
-            "/c",  # Switch from yolo to confirm
+            "/audit inf",  # Switch from yolo to confirm
             "",  # Confirm action in confirm mode
             "",  # No new task when agent wants to finish
         ]
@@ -585,7 +585,7 @@ def test_all_mode_transitions_yolo_to_others(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "yolo",
+                "audit_timeout": 0,
             },
         )
 
@@ -606,7 +606,7 @@ def test_all_mode_transitions_yolo_to_others(model_factory):
 
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "confirm action\n"
-        assert agent.config.mode == "confirm"
+        assert agent.config.audit_timeout == float("inf")
 
 
 def test_all_mode_transitions_confirm_to_human(model_factory):
@@ -624,7 +624,7 @@ def test_all_mode_transitions_confirm_to_human(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "confirm",
+                "audit_timeout": float("inf"),
             },
         )
 
@@ -658,7 +658,7 @@ def test_help_command_from_different_contexts(model_factory):
                 env=LocalEnvironment(),
                 **{
                     **config,
-                    "mode": "confirm",
+                    "audit_timeout": float("inf"),
                 },
             )
 
@@ -712,7 +712,7 @@ def test_complex_mode_switching_sequence(model_factory):
         env=LocalEnvironment(),
         **{
             **config,
-            "mode": "confirm",
+            "audit_timeout": float("inf"),
         },
     )
 
@@ -729,9 +729,9 @@ def test_complex_mode_switching_sequence(model_factory):
 
     with mock_prompts(
         [
-            "/y",  # Confirm->Yolo during first action confirmation
+            "/audit 0",  # Confirm->Yolo during first action confirmation
             "/u",  # Yolo->Human during interrupt
-            "/c",  # Human->Confirm in human mode
+            "/audit inf",  # Human->Confirm in human mode
             "",  # Confirm final action
             "",  # No new task when agent wants to finish
             "",  # Extra empty input for any additional prompts
@@ -743,7 +743,7 @@ def test_complex_mode_switching_sequence(model_factory):
 
     assert info["exit_status"] == "Submitted"
     assert info["submission"] == "final action\n"
-    assert agent.config.mode == "confirm"  # Should end in confirm mode
+    assert agent.config.audit_timeout == float("inf")  # Should end in confirm mode
 
 
 def test_limits_exceeded_with_user_continuation(model_factory):
@@ -771,7 +771,7 @@ def test_limits_exceeded_with_user_continuation(model_factory):
             **config,
             "step_limit": 10,  # High enough to not interfere initially
             "cost_limit": 0.5,  # Will be exceeded with first model call (cost=0.6),
-            "mode": "yolo",  # Use yolo mode to avoid confirmation prompts,
+            "audit_timeout": 0,  # Use yolo mode to avoid confirmation prompts,
         },
     )
 
@@ -816,7 +816,7 @@ def test_limits_exceeded_multiple_times_with_continuation(model_factory):
             **config,
             "step_limit": 1,  # Will be exceeded after first step
             "cost_limit": 100.0,  # High enough to not interfere,
-            "mode": "yolo",
+            "audit_timeout": 0,
         },
     )
 
@@ -849,7 +849,7 @@ def test_limits_exceeded_non_interactive_stops_cleanly(model_factory):
             **config,
             "step_limit": 10,
             "cost_limit": 0.5,
-            "mode": "yolo",
+            "audit_timeout": 0,
         },
     )
 
@@ -871,7 +871,7 @@ def test_time_exceeded_never_prompts(model_factory):
     agent = InteractiveAgent(
         model=factory([("Step 1", [{"command": "echo 'first step'"}])]),
         env=LocalEnvironment(),
-        **{**config, "step_limit": 10, "cost_limit": 100.0, "wall_time_limit_seconds": 1, "mode": "yolo"},
+        **{**config, "step_limit": 10, "cost_limit": 100.0, "wall_time_limit_seconds": 1, "audit_timeout": 0},
     )
     agent._start_time = 0  # force the wall-clock budget to be already exhausted
 
@@ -1013,14 +1013,14 @@ def test_continue_after_completion_in_yolo_mode(model_factory):
             env=LocalEnvironment(),
             **{
                 **config,
-                "mode": "yolo",  # Start in yolo mode
+                "audit_timeout": 0,  # Start in yolo mode
             },
         )
 
         info = agent.run("Initial task")
         assert info["exit_status"] == "Submitted"
         assert info["submission"] == "second task completed\n"
-        assert agent.config.mode == "yolo"
+        assert agent.config.audit_timeout == 0
         assert agent.n_calls == 2
         # Should have the new task message
         new_task_messages = [msg for msg in agent.messages if "Create a second task" in get_text(msg)]
@@ -1164,7 +1164,7 @@ def test_submission_help_then_human_mode(model_factory):
                     [("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'initial'"}])],
                 ),
                 env=LocalEnvironment(),
-                **{**config, "mode": "yolo"},
+                **{**config, "audit_timeout": 0},
             )
             info = agent.run("Solve the issue")
     assert info["exit_status"] == "Submitted"
@@ -1172,7 +1172,7 @@ def test_submission_help_then_human_mode(model_factory):
     assert agent.config.mode == "human"
     assert agent.n_calls == 1
     # Help was shown
-    assert any("/y" in str(c) for c in mock_print.call_args_list)
+    assert any("/audit SECONDS" in str(c) for c in mock_print.call_args_list)
     # echo 'test' output is visible in the conversation
     assert any("test" in get_text(msg) for msg in agent.messages)
 
@@ -1186,7 +1186,7 @@ def test_submission_enter_quits(model_factory):
                 [("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'completed'"}])],
             ),
             env=LocalEnvironment(),
-            **{**config, "mode": "yolo"},
+            **{**config, "audit_timeout": 0},
         )
         info = agent.run("Solve the issue")
     assert info["exit_status"] == "Submitted"

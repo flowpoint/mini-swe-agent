@@ -95,7 +95,7 @@ def test_local_end_to_end(local_test_data):
         agent = main(
             model_name="tardis",
             config_spec=[str(DEFAULT_CONFIG_FILE)],
-            yolo=True,
+            audit_timeout=0,
             task="Blah blah blah",
             output=None,
             cost_limit=10,

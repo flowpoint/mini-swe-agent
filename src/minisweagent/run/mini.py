@@ -20,7 +20,7 @@ from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
 from minisweagent.run import setup
-from minisweagent.run.utilities import positive_float
+from minisweagent.run.utilities import nonnegative_float, positive_float
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
@@ -54,7 +54,7 @@ Examples:
 
 -c mini.yaml -c model.model_kwargs.temperature=0.5
 
--c mini.yaml -c agent.mode=yolo
+-c mini.yaml -c agent.audit_timeout=0
 """
 
 console = Console(highlight=False)
@@ -94,7 +94,7 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
     parser.add_argument("-t", "--task", help="Task/problem statement")
-    parser.add_argument("-y", "--yolo", action="store_true", help="Run without command confirmation (default; overrides config)")
+    parser.add_argument("--audit-timeout", type=nonnegative_float, help="Audit seconds per command (default: 0; inf waits for continuation)")
     parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
     parser.add_argument(
@@ -117,7 +117,7 @@ def main(
     model_class: str | None = None,
     agent_class: str | None = None,
     task: str | None = None,
-    yolo: bool = False,
+    audit_timeout: float | None = None,
     cost_limit: float | None = None,
     config_spec: list[str] | None = None,
     output: Path | None = DEFAULT_OUTPUT_FILE,
@@ -140,7 +140,7 @@ def main(
         },
         "agent": {
             "agent_class": agent_class or UNSET,
-            "mode": "yolo" if yolo else UNSET,
+            "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
             "cost_limit": cost_limit if cost_limit is not None else UNSET,
             "confirm_exit": False if exit_immediately else UNSET,
             "output_path": output or UNSET,

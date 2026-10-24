@@ -1,10 +1,4 @@
-"""A small generalization of the default agent that puts the user in the loop.
-
-There are three modes:
-- human: commands issued by the user are executed immediately
-- confirm: commands issued by the LM but not whitelisted are confirmed by the user
-- yolo: commands issued by the LM are executed immediately without confirmation
-"""
+"""Interactive command auditing and optional human command entry."""
 
 import re
 import sys
@@ -22,17 +16,15 @@ console = Console(highlight=False)
 
 
 class InteractiveAgentConfig(AgentConfig):
-    mode: Literal["human", "confirm", "yolo"] = "yolo"
-    """Whether to confirm actions."""
+    mode: Literal["human", "agent"] = "agent"
+    """Who supplies commands; audit_timeout controls review of model commands."""
     whitelist_actions: list[str] = []
-    """Never confirm actions that match these regular expressions."""
+    """Skip manual audit waits for commands matching these regular expressions."""
     confirm_exit: bool = True
     """If the agent wants to finish, do we ask for confirmation from user?"""
 
 
 class InteractiveAgent(DefaultAgent):
-    _MODE_COMMANDS_MAPPING = {"/u": "human", "/c": "confirm", "/y": "yolo"}
-
     def __init__(self, *args, config_class=InteractiveAgentConfig, **kwargs):
         super().__init__(*args, config_class=config_class, **kwargs)
         self.cost_last_confirmed = 0.0
@@ -58,17 +50,15 @@ class InteractiveAgent(DefaultAgent):
     def query(self) -> dict:
         # Extend supermethod to handle human mode
         if self.config.mode == "human":
-            match command := self._prompt_and_handle_slash_commands("[bold yellow]>[/bold yellow] "):
-                case "/y" | "/c":
-                    pass
-                case _:
-                    msg = {
-                        "role": "user",
-                        "content": f"User command: \n```bash\n{command}\n```",
-                        "extra": {"actions": [{"command": command}]},
-                    }
-                    self.add_messages(msg)
-                    return msg
+            command = self._prompt_and_handle_slash_commands("[bold yellow]>[/bold yellow] ")
+            if not command.startswith("/audit "):
+                msg = {
+                    "role": "user",
+                    "content": f"User command: \n```bash\n{command}\n```",
+                    "extra": {"actions": [{"command": command}]},
+                }
+                self.add_messages(msg)
+                return msg
         try:
             with console.status("Waiting for the LM to respond..."):
                 return super().query()
@@ -80,7 +70,7 @@ class InteractiveAgent(DefaultAgent):
         except LimitsExceeded:
             if not self._stdin_is_interactive():
                 # No terminal to prompt for new limits -- e.g. an unattended
-                # `--yolo` run, or any run with stdin redirected from /dev/null
+                # run with audit_timeout=0, or stdin redirected from /dev/null
                 # (CI, a sandbox). Stop cleanly so the trajectory is saved with a
                 # LimitsExceeded exit status, instead of crashing on EOFError when
                 # reading input.
@@ -97,7 +87,7 @@ class InteractiveAgent(DefaultAgent):
     def _stdin_is_interactive() -> bool:
         """Whether an interactive terminal is available to prompt the user.
 
-        Returns False for unattended runs (e.g. `--yolo` in CI, or inside a
+        Returns False for unattended runs (e.g. in CI, or inside a
         sandbox with stdin redirected from /dev/null), where calling ``input()``
         would raise ``EOFError`` and crash the run.
         """
@@ -117,26 +107,15 @@ class InteractiveAgent(DefaultAgent):
                 "[green]Type a comment/command[/green] (/h for available commands)"
                 "\n[bold yellow]>[/bold yellow] "
             ).strip()
-            if not interruption_message or interruption_message in self._MODE_COMMANDS_MAPPING:
+            if not interruption_message or interruption_message == "/u" or interruption_message.startswith("/audit "):
                 interruption_message = "Temporary interruption caught."
             self._interrupt(f"Interrupted by user: {interruption_message}")
 
     def execute_actions(self, message: dict) -> list[dict]:
-        # Override to handle user confirmation and confirm_exit, with try/finally to preserve partial outputs
-        actions = message.get("extra", {}).get("actions", [])
-        commands = [action["command"] for action in actions]
-        outputs = []
         try:
-            self._ask_confirmation_or_interrupt(commands)
-            for action in actions:
-                outputs.append(self.env.execute(action))
+            return super().execute_actions(message)
         except Submitted as e:
             self._check_for_new_task_or_submit(e)
-        finally:
-            result = self.add_messages(
-                *self.model.format_observation_messages(message, outputs, self.get_template_vars())
-            )
-        return result
 
     def _add_observation_messages(self, message: dict, outputs: list[dict]) -> list[dict]:
         return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
@@ -153,28 +132,30 @@ class InteractiveAgent(DefaultAgent):
             user_input = self._prompt_and_handle_slash_commands(message).strip()
             if user_input == "/u":  # directly continue
                 self._interrupt("Switched to human mode.")
-            elif user_input in self._MODE_COMMANDS_MAPPING:  # ask again
+            elif user_input.startswith("/audit "):  # ask again
                 return self._check_for_new_task_or_submit(e)
             elif user_input:
                 self._interrupt(f"The user added a new task: {user_input}", itype="UserNewTask")
         raise e
 
-    def _should_ask_confirmation(self, action: str) -> bool:
-        return self.config.mode == "confirm" and not any(re.match(r, action) for r in self.config.whitelist_actions)
-
-    def _ask_confirmation_or_interrupt(self, commands: list[str]) -> None:
-        if not any(self._should_ask_confirmation(c) for c in commands):
+    def audit(self, action: dict) -> None:
+        if self.config.mode == "human" or any(re.match(r, action["command"]) for r in self.config.whitelist_actions):
             return
+        super().audit(action)
+
+    def confirm_action(self, action: dict) -> None:
         prompt = (
-            f"[bold yellow]Execute {len(commands)} action(s)?[/] [green][bold]Enter[/] to confirm[/], "
+            "[bold yellow]Execute command?[/] [green][bold]Enter[/] to continue[/], "
             "[red]type [bold]comment[/] to reject[/], or [blue][bold]/h[/] to show available commands[/]\n"
             "[bold yellow]>[/bold yellow] "
         )
         match user_input := self._prompt_and_handle_slash_commands(prompt).strip():
-            case "" | "/y":
-                pass  # confirmed, do nothing
+            case "":
+                return
             case "/u":  # Skip execution action and get back to query
                 self._interrupt("Commands not executed. Switching to human mode", itype="UserRejection")
+            case _ if user_input.startswith("/audit "):
+                self.audit(action)
             case _:
                 self._interrupt(
                     f"Commands not executed. The user rejected your commands with the following message: {user_input}",
@@ -192,18 +173,23 @@ class InteractiveAgent(DefaultAgent):
         if user_input == "/h":
             console.print(
                 f"Current mode: [bold green]{self.config.mode}[/bold green]\n"
-                f"[bold green]/y[/bold green] to switch to [bold yellow]yolo[/bold yellow] mode (execute LM commands without confirmation)\n"
-                f"[bold green]/c[/bold green] to switch to [bold yellow]confirmation[/bold yellow] mode (ask for confirmation before executing LM commands)\n"
+                f"Audit timeout: [bold green]{self.config.audit_timeout:g}s[/bold green]\n"
+                "[bold green]/audit SECONDS[/bold green] to resume model commands with this audit window (0: immediate; inf: wait for continuation)\n"
                 f"[bold green]/u[/bold green] to switch to [bold yellow]human[/bold yellow] mode (execute commands issued by the user)\n"
                 f"[bold green]/m[/bold green] to enter multiline comment",
             )
             return self._prompt_and_handle_slash_commands(prompt)
-        if user_input in self._MODE_COMMANDS_MAPPING:
-            if self.config.mode == self._MODE_COMMANDS_MAPPING[user_input]:
+        if user_input == "/u" or user_input.startswith("/audit "):
+            mode = "human" if user_input == "/u" else "agent"
+            timeout = self.config.audit_timeout if mode == "human" else float(user_input.split(maxsplit=1)[1])
+            if not timeout >= 0:
+                raise ValueError("audit timeout must be non-negative (or inf)")
+            if self.config.mode == mode and self.config.audit_timeout == timeout:
                 return self._prompt_and_handle_slash_commands(
-                    f"[bold red]Already in {self.config.mode} mode.[/bold red]\n{prompt}"
+                    f"[bold red]Already in {mode} mode with audit timeout {timeout:g}s.[/bold red]\n{prompt}"
                 )
-            self.config.mode = self._MODE_COMMANDS_MAPPING[user_input]
-            console.print(f"Switched to [bold green]{self.config.mode}[/bold green] mode.")
+            self.config.mode = mode
+            self.config.audit_timeout = timeout
+            console.print(f"Mode: [bold green]{mode}[/bold green]; audit timeout: [bold green]{timeout:g}s[/bold green].")
             return user_input
         return user_input

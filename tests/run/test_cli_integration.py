@@ -39,7 +39,7 @@ def test_main_starts_without_setup_wizard():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test task",
-            yolo=False,
+            audit_timeout=None,
             output=None,
             model_class=None,
             agent_class=None,
@@ -59,7 +59,7 @@ def test_mini_command_calls_run_interactive():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test", "mode": "confirm"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": float("inf")}, "env": {}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
@@ -71,7 +71,7 @@ def test_mini_command_calls_run_interactive():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test task",
-            yolo=False,
+            audit_timeout=None,
             output=None,
             model_class=None,
             agent_class=None,
@@ -98,7 +98,7 @@ def test_mini_calls_prompt_when_no_task_provided():
         mock_prompt.return_value = "User provided task"
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test", "mode": "confirm"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": float("inf")}, "env": {}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
@@ -110,7 +110,7 @@ def test_mini_calls_prompt_when_no_task_provided():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task=None,  # No task provided
-            yolo=False,
+            audit_timeout=None,
             output=None,
             model_class=None,
             agent_class=None,
@@ -136,7 +136,7 @@ def test_mini_with_explicit_model():
         mock_model = Mock()
         mock_get_model.return_value = mock_model
         mock_get_config.return_value = {
-            "agent": {"system_template": "test", "mode": "yolo"},
+            "agent": {"system_template": "test", "audit_timeout": 0},
             "env": {},
             "model": {"default_config": "test"},
         }
@@ -151,7 +151,7 @@ def test_mini_with_explicit_model():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="gpt-4",
             task="Test task with explicit model",
-            yolo=True,
+            audit_timeout=0,
             output=None,
             model_class=None,
             agent_class=None,
@@ -166,8 +166,8 @@ def test_mini_with_explicit_model():
         mock_agent.run.assert_called_once_with("Test task with explicit model")
 
 
-def test_yolo_mode_sets_correct_agent_config():
-    """Test that yolo mode sets the correct agent configuration."""
+def test_zero_audit_timeout_overrides_config():
+    """An explicit zero must override a configured audit window."""
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
@@ -176,35 +176,33 @@ def test_yolo_mode_sets_correct_agent_config():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": 5}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
-        # Call main function with yolo=True
+        # Call main function with audit_timeout=0
         main(
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test yolo task",
-            yolo=True,
+            audit_timeout=0,
             output=None,
             model_class=None,
             agent_class=None,
         )
 
-        # Verify get_agent was called with yolo mode in config
         mock_get_agent.assert_called_once()
         args, kwargs = mock_get_agent.call_args
-        # The config (third positional arg) should contain the mode
-        assert args[2].get("mode") == "yolo"
+        assert args[2].get("audit_timeout") == 0
         # Verify agent.run was called
         mock_agent.run.assert_called_once_with("Test yolo task")
 
 
-def test_confirm_mode_sets_correct_agent_config():
-    """Test that when yolo=False, no explicit mode is set (defaults to None)."""
+def test_missing_audit_override_preserves_config():
+    """Omitting the CLI override preserves the configured audit window."""
     with (
         patch("minisweagent.run.mini.get_agent") as mock_get_agent,
         patch("minisweagent.run.mini.get_model") as mock_get_model,
@@ -213,29 +211,27 @@ def test_confirm_mode_sets_correct_agent_config():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": 1.25}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
-        # Call main function with yolo=False (default)
+        # Call main function with audit_timeout=None (default)
         main(
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test confirm task",
-            yolo=False,
+            audit_timeout=None,
             output=None,
             model_class=None,
             agent_class=None,
         )
 
-        # Verify get_agent was called with no explicit mode (defaults to None)
         mock_get_agent.assert_called_once()
         args, kwargs = mock_get_agent.call_args
-        # The config (third positional arg) should not contain mode when yolo=False
-        assert args[2].get("mode") is None
+        assert args[2].get("audit_timeout") == 1.25
         # Verify agent.run was called
         mock_agent.run.assert_called_once_with("Test confirm task")
 
@@ -256,7 +252,7 @@ def test_cost_limit_zero_is_preserved():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test cost limit task",
-            yolo=False,
+            audit_timeout=None,
             cost_limit=0,
             output=None,
             model_class=None,
@@ -283,7 +279,7 @@ def test_mini_help():
     assert "--config" in clean_output
     assert "--model" in clean_output
     assert "--task" in clean_output
-    assert "--yolo" in clean_output
+    assert "--audit-timeout" in clean_output
     assert "--output" in clean_output
     assert "--environment-class" not in clean_output
 
@@ -301,7 +297,7 @@ def test_mini_help_with_argparse(capsys):
     assert "--config" in clean_output
     assert "--model" in clean_output
     assert "--task" in clean_output
-    assert "--yolo" in clean_output
+    assert "--audit-timeout" in clean_output
     assert "--output" in clean_output
 
 
@@ -437,7 +433,7 @@ def test_exit_immediately_flag_sets_confirm_exit_false():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test task",
-            yolo=False,
+            audit_timeout=None,
             output=None,
             exit_immediately=True,  # This should set confirm_exit=False
             model_class=None,
@@ -471,7 +467,7 @@ def test_no_exit_immediately_flag_sets_confirm_exit_true():
             config_spec=[str(DEFAULT_CONFIG_FILE)],
             model_name="test-model",
             task="Test task",
-            yolo=False,
+            audit_timeout=None,
             output=None,
             model_class=None,
             agent_class=None,

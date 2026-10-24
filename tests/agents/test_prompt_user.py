@@ -33,13 +33,15 @@ from prompt_toolkit.output import DummyOutput
 with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
     from minisweagent.agents.utils.prompt_user import _multiline_prompt, prompt_session
 
-    pipe.send_text('first' + sys.argv[2] + 'second\x1b[200~\npasted\r\ntext\x07\x1b[201~' + sys.argv[1])
+    pipe.send_text('first' + sys.argv[2] + 'second\x1b\rtyping\x1bb\x1b[200~\npasted\r\ntext\x07\x1b[201~' + sys.argv[1])
     message = _multiline_prompt()
     pipe.send_text('draft\x12first\x07\x07')
     draft = _multiline_prompt()
+    pipe.send_text('ab\x1b[D!\x1b[C' + sys.argv[1])
+    edited = _multiline_prompt()
     pipe.send_text('\r')
     confirmation = prompt_session.prompt()
-    print(json.dumps([message, draft, confirmation]))
+    print(json.dumps([message, draft, edited, confirmation]))
 """,
             submit_key,
             newline,
@@ -51,4 +53,4 @@ with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOut
         timeout=10,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == ["first\nsecond\npasted\ntext\x07", "draft", ""]
+    assert json.loads(result.stdout) == ["first\nsecond\ntypingb\npasted\ntext\x07", "draft", "a!b", ""]

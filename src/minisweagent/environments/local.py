@@ -2,6 +2,7 @@ import os
 import platform
 import signal
 import subprocess
+from contextlib import suppress
 from typing import Any
 
 from pydantic import BaseModel
@@ -70,7 +71,7 @@ class LocalEnvironment:
 
 
 def _run(command: str, cwd: str, env: dict[str, str], timeout: int) -> subprocess.CompletedProcess[str]:
-    """Run a command with Linux bash, killing the process group on timeout."""
+    """Run a command with Linux bash, killing the process group on timeout or interruption."""
     process = subprocess.Popen(
         ["/bin/bash", "-c", command],
         text=True,
@@ -88,4 +89,9 @@ def _run(command: str, cwd: str, env: dict[str, str], timeout: int) -> subproces
         os.killpg(process.pid, signal.SIGKILL)
         stdout, _ = process.communicate()
         raise subprocess.TimeoutExpired(command, timeout, output=stdout)
+    except KeyboardInterrupt:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        raise
     return subprocess.CompletedProcess(command, process.returncode, stdout=stdout)
