@@ -5,12 +5,13 @@
 
 import argparse
 import os
+from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import mkstemp
 from typing import Any
 
 from rich.console import Console
 
-from minisweagent import global_config_dir
 from minisweagent.agents import get_agent
 from minisweagent.agents.utils.prompt_user import _multiline_prompt
 from minisweagent.config import builtin_config_dir, get_config_from_spec
@@ -19,7 +20,10 @@ from minisweagent.models import get_model
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = Path(os.getenv("MSWEA_MINI_CONFIG_PATH", builtin_config_dir / "mini.yaml"))
-DEFAULT_OUTPUT_FILE = global_config_dir / "last_mini_run.traj.json"
+_data_home = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local/share")
+if not _data_home.is_absolute():
+    _data_home = Path.home() / ".local/share"
+DEFAULT_OUTPUT_FILE = _data_home / "mini-swe-agent" / "trajectories" / "latest.traj.json"
 
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
@@ -47,6 +51,17 @@ Examples:
 console = Console(highlight=False)
 
 
+def _new_output_file() -> Path:
+    DEFAULT_OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, filename = mkstemp(
+        prefix=f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-",
+        suffix=".traj.json",
+        dir=DEFAULT_OUTPUT_FILE.parent,
+    )
+    os.close(fd)
+    return Path(filename)
+
+
 def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
@@ -64,7 +79,13 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("-y", "--yolo", action="store_true", help="Run without confirmation")
     parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
-    parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT_FILE, help="Output trajectory file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT_FILE,
+        help=f"Output trajectory file (default: a new file in {DEFAULT_OUTPUT_FILE.parent}, linked as latest.traj.json)",
+    )
     parser.add_argument(
         "--exit-immediately",
         action="store_true",
@@ -118,7 +139,15 @@ def main(
 
     model = get_model(config=config.get("model", {}))
     env = get_environment(config.get("environment", {}), default_type="local")
+    if output == DEFAULT_OUTPUT_FILE:
+        config["agent"]["output_path"] = _new_output_file()
     agent = get_agent(model, env, config.get("agent", {}), default_type="interactive")
+    if output == DEFAULT_OUTPUT_FILE:
+        output_path = config["agent"]["output_path"]
+        agent.save(output_path)
+        link = output_path.with_suffix(".link")
+        link.symlink_to(output_path.name)
+        link.replace(DEFAULT_OUTPUT_FILE)
     agent.run(run_task)
     if (output_path := config.get("agent", {}).get("output_path")):
         console.print(f"Saved trajectory to [bold green]'{output_path}'[/bold green]")
