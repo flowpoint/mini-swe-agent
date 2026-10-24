@@ -519,7 +519,7 @@ def test_exit_immediately_flag_with_cli_adapter():
         mock_get_agent.return_value = mock_agent
 
         assert app(
-            ["--task", "Test task", "--exit-immediately", "--model", "test-model"]
+            ["--task", "Test task", "--exit-immediately", "--model", "test-model", "--config", str(DEFAULT_CONFIG_FILE)]
         ) == 0
 
         mock_get_agent.assert_called_once()

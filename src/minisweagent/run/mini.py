@@ -18,7 +18,9 @@ from minisweagent.agents import get_agent
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.environments import get_environment
 from minisweagent.models import get_model
+from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
 from minisweagent.run import setup
+from minisweagent.run.utilities import positive_float
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
@@ -30,7 +32,8 @@ DEFAULT_OUTPUT_FILE = _data_home / "mini-swe-agent" / "trajectories" / "latest.t
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
 
-Configure a server: mini setup --base-url http://host:8080/v1
+Create a config before running: mini setup
+For a remote server: mini setup --base-url http://host:8080/v1
 
 More information about the usage:
 https://mini-swe-agent.com/latest/usage/mini/
@@ -79,6 +82,12 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("-m", "--model", dest="model_name", help="Model to use")
     parser.add_argument("--model-class", help="Model class to use (supported: 'llamacpp')")
     parser.add_argument(
+        "--check-timeout",
+        type=positive_float,
+        default=DEFAULT_CHECK_TIMEOUT,
+        help="Startup model check timeout in seconds (default: %(default)s)",
+    )
+    parser.add_argument(
         "--agent-class",
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
@@ -113,13 +122,16 @@ def main(
     config_spec: list[str] | None = None,
     output: Path | None = DEFAULT_OUTPUT_FILE,
     exit_immediately: bool = False,
+    check_timeout: float = DEFAULT_CHECK_TIMEOUT,
 ) -> Any:
     # Build the config from the command line arguments
     if config_spec is None:
-        config_spec = [str(DEFAULT_CONFIG_FILE)]
         user_config = get_user_config_path()
-        if user_config.is_file() or os.getenv("MSWEA_MINI_CONFIG_PATH"):
-            config_spec.append(str(user_config))
+        if not user_config.is_file():
+            raise SystemExit(f"mini: config not found: {user_config}; run mini setup or use --config PATH")
+        config_spec = [str(DEFAULT_CONFIG_FILE), str(user_config)]
+    if not any("=" not in spec for spec in config_spec):
+        raise SystemExit("mini: no config file specified; run mini setup or use --config PATH")
     console.print(f"Building agent config from specs: [bold green]{config_spec}[/bold green]")
     configs = [get_config_from_spec(spec) for spec in config_spec]
     configs.append({
@@ -143,12 +155,14 @@ def main(
     })
     config = recursive_merge(*configs)
 
+    model = get_model(config=config.get("model", {}))
+    if isinstance(model, LlamaCppModel):
+        model.check_connection(timeout=check_timeout)
     if (run_task := config.get("run", {}).get("task", UNSET)) is UNSET:
         console.print("[bold yellow]What do you want to do?")
         run_task = _multiline_prompt()
         console.print("[bold green]Got that, thanks![/bold green]")
 
-    model = get_model(config=config.get("model", {}))
     env = get_environment(config.get("environment", {}), default_type="local")
     if output == DEFAULT_OUTPUT_FILE:
         config["agent"]["output_path"] = _new_output_file()

@@ -12,6 +12,7 @@ from minisweagent.models.utils.actions_text import format_observation_messages, 
 
 logger = logging.getLogger("llamacpp_model")
 
+DEFAULT_CHECK_TIMEOUT = 3.0
 _RETRY_STATUS_CODES = {429, 502, 503, 504}
 _RETRY_REQUEST_EXCEPTIONS = (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
 _MAX_ATTEMPTS = 3
@@ -87,6 +88,18 @@ class LlamaCppModel:
         return LlamaCppHTTPError(
             f"llama.cpp server returned HTTP {response.status_code}: {self._response_detail(response)}"
         )
+
+    def check_connection(self, timeout: float = DEFAULT_CHECK_TIMEOUT) -> None:
+        response = self.session.get(
+            f"{self._api_url.removesuffix('/chat/completions')}/models", timeout=timeout, allow_redirects=False
+        )
+        if response.status_code != 200:
+            raise self._http_error(response)
+        data = response.json()
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise LlamaCppProtocolError("llama.cpp model list is missing a 'data' array")
+        if not any(isinstance(item, dict) and item.get("id") == self.config.model_name for item in data["data"]):
+            raise LlamaCppError(f"Model {self.config.model_name!r} is not available at {self.config.base_url}")
 
     def _request(self, payload: dict) -> requests.Response:
         for attempt in range(1, _MAX_ATTEMPTS + 1):
