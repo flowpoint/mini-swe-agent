@@ -1,6 +1,8 @@
 .cursor/rules/_*
 uv.lock
 patch.txt
+*.orig
+*.rej
 exit_statuses*.yaml
 preds.json
 *.traj.json
@@ -83,9 +85,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
-
 # PyBuilder
 .pybuilder/
 target/
@@ -149,9 +148,6 @@ venv.bak/
 
 # Rope project settings
 .ropeproject
-
-# mkdocs documentation
-/site
 
 # mypy
 .mypy_cache/

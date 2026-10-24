@@ -47,12 +47,6 @@ dev = [
     "pytest-xdist",
     "pre-commit",
     "ruff",
-    "mkdocs-include-markdown-plugin",
-    "mkdocstrings[python]>=0.18",
-    "mike",
-    "mkdocs-material",
-    "mkdocs-glightbox",
-    "mkdocs-redirects",
     "mini-swe-agent[inspector]",
 ]
 

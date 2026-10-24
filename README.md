@@ -85,8 +85,6 @@ Load a full custom configuration with `mini -c /path/to/config.yaml -t "..."`, o
 mini -c mini.yaml -c model.base_url=http://127.0.0.1:8080/v1 -t "Inspect this project"
 ```
 
-See [the quickstart](docs/quickstart.md) and [YAML configuration reference](docs/advanced/yaml_configuration.md).
-
 ## Optional SWE-bench support
 
 SWE-bench dataset loading is isolated from the normal runtime. Install it only when needed:
