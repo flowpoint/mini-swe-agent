@@ -1,24 +1,41 @@
 # mini-SWE-agent overview
 
-- mini-SWE-agent implements an AI software engineering agent that solves github issues and similar programming challenges
-- The idea of this project is to write the simplest, smallest, most readable agent.
+mini-SWE-agent is a minimal, hacky, hackable, robust, terse Python CLI tool for software engineering agents in SWE-bench-like interactive REPL and batch workflows.
 
-The project is structured as
+llama.cpp's OpenAI-compatible endpoint is the primary target. Hosted provider endpoints are secondary; keep their dependencies and special cases optional and out of the core loop.
 
-```bash
-minisweagent/__init__  # Protocols/interfaces for all base classes
-minisweagent/agents  # Agent control flow & loop
-minisweagent/environments  # Executing agent actions
-minisweagent/models  # LM interfaces
-minisweagent/run  # Run scripts that serve as an entry point
+## Design priorities
+
+- Roughly minimize external dependencies, low-value features, lines of code, Python tokens, and complexity, while preserving correctness, robustness, and ease of hacking.
+- Prefer a small, explicit core with visible control flow and state. Validate at boundaries, fail clearly, bound network waits, and keep CLI output terse with meaningful exit statuses.
+- Use medium-level abstractions when they remove repetition or clarify behavior. Exploit Python's language features and standard library, especially `functools`, `itertools`, `contextlib`, `collections`, and `dataclasses`, before adding dependencies.
+- Small local syntax sugar is welcome when it makes code shorter and easier to modify. Keep it inspectable; avoid code golf, hidden magic, deep hierarchies, and speculative frameworks.
+- Keep behavior easy to rewrite, replace, wrap, or override through ordinary functions and small opt-in Python plugins. Prefer explicit inputs and outputs and simple composition over elaborate registries or plugin machinery.
+
+Keep these extension points easy to customize as needed:
+
+- Sampling and prompt tuning.
+- Optional guardrail, permission, and rule checks for each command. When enabled, check every command immediately before execution and honor rejection or failure.
+- Context compaction.
+- Response rendering, including optional syntax highlighting.
+
+These guide the design; add abstractions and features only when a concrete use case needs them.
+
+## Structure
+
+```text
+src/minisweagent/__init__.py   # Protocols/interfaces
+src/minisweagent/agents        # Agent control flow & loop
+src/minisweagent/environments  # Executing agent actions
+src/minisweagent/models        # Model interfaces
+src/minisweagent/run           # CLI entry points
 ```
 
-- The project embraces polymorphism: Every individual class should be simple, but we offer alternatives
-- Every use case should start with a run script, that picks one agent, environment, and model class to run
+Entry points wire together an agent, environment, and model. Keep each component small and replaceable, using functions or simple classes as appropriate.
 
 # Style guide
 
-1. Target python 3.10 or higher
+1. Support the Python versions declared in `pyproject.toml` (currently 3.11+) across recent releases. Use supported language and standard-library features fully; do not raise the minimum version unnecessarily.
 2. Use python with type annotations. Use `list` instead of `List`.
 3. Use `pathlib` instead of `os.path`. Use `Path.read_text()` over `with ...open()` constructs.
 4. Use `argparse` for command-line interfaces.
@@ -27,10 +44,10 @@ minisweagent/run  # Run scripts that serve as an entry point
 7. Use `jinja` for formatting templates
 8. Use `dataclass` for keeping track config
 9. Do not catch exceptions unless explicitly told to.
-10. Write concise, short, minimal code.
+10. Write concise, short, minimal code that remains straightforward to inspect, debug, and change.
 11. In most cases, avoid initializing variables just to pass them to a function. Instead just pass the expression to the function directly.
 12. Not every exception has to be caught. Exceptions are a good way to show problems to a user.
-13. This repository rewards minimal code. Try to be as concise as possible.
+13. Every dependency, feature, abstraction, and line should earn its place. Prefer deleting low-value code to preserving unnecessary generality.
 
 Here's an example for rule 11:
 
@@ -99,9 +116,9 @@ Flag the following style issue as minor:
 
 Use these component names in parentheses for `fix`, `feat`, `enh`, and `ref` commits:
 
-- `models` - Changes to model interfaces (litellm, anthropic, openai, portkey, openrouter)
-- `agents` - Changes to agent classes (default, interactive, multimodal)
-- `env` - Changes to environments (docker, local, singularity, bubblewrap, swerex)
+- `models` - Changes to model interfaces (primarily llama.cpp; optional hosted providers)
+- `agents` - Changes to agent control flow and behavior
+- `env` - Changes to command execution environments
 - `config` - Changes to configuration files or config handling
 - `run` - Changes to run scripts (mini, hello_world)
 - `benchmarks` - Changes to benchmark runners (swebench, inspector)
