@@ -6,7 +6,13 @@ from pathlib import Path
 
 import yaml
 
+from minisweagent import global_config_dir
+
 builtin_config_dir = Path(__file__).parent
+
+
+def get_user_config_path() -> Path:
+    return Path(os.getenv("MSWEA_MINI_CONFIG_PATH") or global_config_dir / "mini.yaml")
 
 
 def get_config_path(config_spec: str | Path) -> Path:
@@ -61,4 +67,10 @@ def get_config_from_spec(config_spec: str | Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-__all__ = ["builtin_config_dir", "get_config_path", "get_config_from_spec", "_key_value_spec_to_nested_dict"]
+__all__ = [
+    "builtin_config_dir",
+    "get_config_path",
+    "get_config_from_spec",
+    "get_user_config_path",
+    "_key_value_spec_to_nested_dict",
+]

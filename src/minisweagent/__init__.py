@@ -14,8 +14,6 @@ import os
 from pathlib import Path
 from typing import Any, Protocol
 
-from rich.console import Console
-
 from minisweagent.utils.log import logger
 
 package_dir = Path(__file__).resolve().parent
@@ -24,14 +22,6 @@ package_dir = Path(__file__).resolve().parent
 _config_home = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
 global_config_dir = Path(os.getenv("MSWEA_GLOBAL_CONFIG_DIR") or _config_home / "mini-swe-agent")
 global_config_dir.mkdir(parents=True, exist_ok=True)
-
-if not os.getenv("MSWEA_SILENT_STARTUP"):
-    Console().print(
-        f"This is [bold green]mini-swe-agent[/bold green] version [bold green]{__version__}[/bold green].\n"
-        f"Check the [bold red]v2 migration guide[/] at [bold red]https://klieret.short.gy/mini-v2-migration[/]\n"
-        f"Using configuration directory [bold green]'{global_config_dir}'[/bold green]",
-    )
-
 
 # === Protocols ===
 # You can ignore them unless you want static type checking.

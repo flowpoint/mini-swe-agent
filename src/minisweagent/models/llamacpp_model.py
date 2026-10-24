@@ -17,6 +17,18 @@ _RETRY_REQUEST_EXCEPTIONS = (requests.exceptions.ConnectionError, requests.excep
 _MAX_ATTEMPTS = 3
 
 
+def normalize_base_url(base_url: str) -> str:
+    api_root = base_url.rstrip("/")
+    parsed_url = urlsplit(api_root)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise ValueError("base_url must be an absolute HTTP(S) URL")
+    if parsed_url.username is not None or parsed_url.password is not None:
+        raise ValueError("base_url must not contain credentials")
+    if parsed_url.query or parsed_url.fragment:
+        raise ValueError("base_url must not contain a query string or fragment")
+    return api_root if api_root.endswith("/v1") else f"{api_root}/v1"
+
+
 class LlamaCppError(RuntimeError):
     """Base error raised by the local llama.cpp adapter."""
 
@@ -52,17 +64,7 @@ class LlamaCppModel:
         # Never inherit proxy settings or credentials from the environment. This
         # adapter communicates only with the explicitly configured server.
         self.session.trust_env = False
-        api_root = self.config.base_url.rstrip("/")
-        parsed_url = urlsplit(api_root)
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-            raise ValueError("base_url must be an absolute HTTP(S) URL")
-        if parsed_url.username is not None or parsed_url.password is not None:
-            raise ValueError("base_url must not contain credentials")
-        if parsed_url.query or parsed_url.fragment:
-            raise ValueError("base_url must not contain a query string or fragment")
-        if not api_root.endswith("/v1"):
-            api_root += "/v1"
-        self._api_url = f"{api_root}/chat/completions"
+        self._api_url = f"{normalize_base_url(self.config.base_url)}/chat/completions"
 
     @property
     def _timeout(self) -> tuple[float, float]:

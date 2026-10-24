@@ -5,7 +5,9 @@
 
 import argparse
 import os
+import sys
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 from tempfile import mkstemp
 from typing import Any
@@ -13,13 +15,13 @@ from typing import Any
 from rich.console import Console
 
 from minisweagent.agents import get_agent
-from minisweagent.agents.utils.prompt_user import _multiline_prompt
-from minisweagent.config import builtin_config_dir, get_config_from_spec
+from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.environments import get_environment
 from minisweagent.models import get_model
+from minisweagent.run import setup
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
-DEFAULT_CONFIG_FILE = Path(os.getenv("MSWEA_MINI_CONFIG_PATH", builtin_config_dir / "mini.yaml"))
+DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
 _data_home = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local/share")
 if not _data_home.is_absolute():
     _data_home = Path.home() / ".local/share"
@@ -27,6 +29,8 @@ DEFAULT_OUTPUT_FILE = _data_home / "mini-swe-agent" / "trajectories" / "latest.t
 
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
+
+Configure a server: mini setup --base-url http://host:8080/v1
 
 More information about the usage:
 https://mini-swe-agent.com/latest/usage/mini/
@@ -49,6 +53,10 @@ Examples:
 """
 
 console = Console(highlight=False)
+
+
+def _multiline_prompt() -> str:
+    return import_module("minisweagent.agents.utils.prompt_user")._multiline_prompt()
 
 
 def _new_output_file() -> Path:
@@ -109,6 +117,9 @@ def main(
     # Build the config from the command line arguments
     if config_spec is None:
         config_spec = [str(DEFAULT_CONFIG_FILE)]
+        user_config = get_user_config_path()
+        if user_config.is_file() or os.getenv("MSWEA_MINI_CONFIG_PATH"):
+            config_spec.append(str(user_config))
     console.print(f"Building agent config from specs: [bold green]{config_spec}[/bold green]")
     configs = [get_config_from_spec(spec) for spec in config_spec]
     configs.append({
@@ -156,7 +167,10 @@ def main(
 
 def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     """Parse command-line arguments and run the agent."""
-    main(**vars(_build_parser(prog).parse_args(argv)))
+    args = sys.argv[1:] if argv is None else argv
+    if args[:1] == ["setup"]:
+        return setup.app(args[1:], prog=f"{prog or 'mini'} setup")
+    main(**vars(_build_parser(prog).parse_args(args)))
     return 0
 
 
