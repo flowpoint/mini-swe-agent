@@ -42,6 +42,8 @@ def running_agent(tmp_path: Path, timeout: str, commands: list[str]):
 import json
 import sys
 from pathlib import Path
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.output import DummyOutput
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.test_models import DeterministicModel, make_output
@@ -50,10 +52,11 @@ agent = DefaultAgent(
     DeterministicModel(outputs=[]), LocalEnvironment(),
     system_template='Test', instance_template='{{task}}', audit_timeout=float(sys.argv[1]),
 )
-try:
-    agent.execute_actions(make_output('Run', [{'command': command} for command in json.loads(sys.argv[2])]))
-finally:
-    agent.save(Path('trajectory.json'))
+with create_app_session(output=DummyOutput()):
+    try:
+        agent.execute_actions(make_output('Run', [{'command': command} for command in json.loads(sys.argv[2])]))
+    finally:
+        agent.save(Path('trajectory.json'))
 """,
             timeout,
             json.dumps(commands),
@@ -84,7 +87,7 @@ def wait_for_audit(process: subprocess.Popen):
 
 
 @pytest.mark.parametrize(
-    ("response", "error"), [("reject this command\n", "UserInterruption"), (None, "KeyboardInterrupt")]
+    ("response", "error"), [("reject this command\x07", "UserInterruption"), (None, "KeyboardInterrupt")]
 )
 def test_infinite_audit_requires_continuation_for_each_command(tmp_path: Path, response: str | None, error: str):
     with running_agent(tmp_path, "inf", ["echo first > first.txt", "echo second > second.txt"]) as process:
@@ -92,7 +95,7 @@ def test_infinite_audit_requires_continuation_for_each_command(tmp_path: Path, r
         with pytest.raises(subprocess.TimeoutExpired):
             process.wait(timeout=0.05)
         assert not (tmp_path / "first.txt").exists()
-        process.stdin.write("\n")
+        process.stdin.write("\x07")
         process.stdin.flush()
         wait_for_audit(process)
         assert (tmp_path / "first.txt").read_text() == "first\n"

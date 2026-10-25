@@ -87,14 +87,15 @@ mini -c mini.yaml -c model.base_url=http://127.0.0.1:8080/v1 -t "Inspect this pr
 
 ## Optional SWE-bench support
 
-SWE-bench dataset loading is isolated from the normal runtime. Install it only when needed:
+SWE-bench runners, Docker support, and benchmark configs live in `benchmarks/` and are excluded from the installed package. Run them from the repository root using the installed core:
 
 ```bash
-python -m pip install 'mini-swe-agent[swebench]'
-mini-extra swebench --help
+python -m pip install . -r benchmarks/requirements.txt
+python -m benchmarks.swebench --help
+python -m benchmarks.swebench_single --help
 ```
 
-Without the extra, SWE-bench commands report the required install command; normal imports and `mini` startup continue to work.
+Docker must be available for benchmark execution. To override benchmark settings, include `-c benchmarks/swebench.yaml` before additional `-c key=value` arguments. `mini-extra` provides only `inspect`; the old benchmark subcommands and `[swebench]` install extra have been removed.
 
 ## Limitations
 

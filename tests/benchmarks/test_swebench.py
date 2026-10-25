@@ -5,9 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from minisweagent import package_dir
-from minisweagent.models.test_models import DeterministicModel, make_output
-from minisweagent.run.benchmarks.swebench import (
+from benchmarks.swebench import (
+    DEFAULT_CONFIG_FILE,
     filter_instances,
     get_sb_environment,
     get_swebench_docker_image_name,
@@ -15,6 +14,8 @@ from minisweagent.run.benchmarks.swebench import (
     remove_from_preds_file,
     update_preds_file,
 )
+from minisweagent import package_dir
+from minisweagent.models.test_models import DeterministicModel, make_output
 
 
 def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
@@ -38,7 +39,7 @@ def test_swebench_end_to_end(github_test_data, tmp_path, workers, container_exec
 
     model_responses = github_test_data["model_responses"]
 
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         # Use side_effect to create a new model instance for each worker
         mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses, cost_per_call=0.1)
 
@@ -49,7 +50,7 @@ def test_swebench_end_to_end(github_test_data, tmp_path, workers, container_exec
             output=str(tmp_path),
             workers=workers,
             filter_spec="swe-agent__test-repo-1",
-            config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+            config_spec=[str(DEFAULT_CONFIG_FILE)],
         )
 
     traj_file_path = package_dir.parent.parent / "tests" / "test_data" / "github_issue.traj.json"
@@ -111,7 +112,7 @@ def test_get_sb_environment_runs_startup_command_as_dict():
     # The startup_command with {{instance_id}} tested the Jinja render as well.
     config = {"run": {"env_startup_command": "echo {{instance_id}}"}}
 
-    with patch("minisweagent.run.benchmarks.swebench.DockerEnvironment", return_value=fake_env):
+    with patch("benchmarks.swebench.DockerEnvironment", return_value=fake_env):
         get_sb_environment(config, instance)
 
     fake_env.execute.assert_called_once_with({"command": "echo repo1__test1"})
@@ -122,7 +123,7 @@ def test_get_sb_environment_does_not_mutate_shared_config():
     config = {"environment": {"environment_class": "docker"}}
     instance = {"instance_id": "repo1__test1", "image_name": "custom/image:tag"}
 
-    with patch("minisweagent.run.benchmarks.swebench.DockerEnvironment", return_value=MagicMock()) as mock_docker:
+    with patch("benchmarks.swebench.DockerEnvironment", return_value=MagicMock()) as mock_docker:
         get_sb_environment(config, instance)
 
     assert mock_docker.call_args.kwargs["image"] == "custom/image:tag"
@@ -360,7 +361,7 @@ def test_redo_existing_false_skips_existing(github_test_data, tmp_path):
     }
     preds_file.write_text(json.dumps(existing_data))
 
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses)
 
         main(
@@ -371,7 +372,7 @@ def test_redo_existing_false_skips_existing(github_test_data, tmp_path):
             workers=1,
             filter_spec="swe-agent__test-repo-1",
             redo_existing=False,
-            config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+            config_spec=[str(DEFAULT_CONFIG_FILE)],
         )
 
     # Should still have the original result
@@ -395,7 +396,7 @@ def test_redo_existing_true_overwrites_existing(github_test_data, tmp_path, cont
     }
     preds_file.write_text(json.dumps(existing_data))
 
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses, cost_per_call=0.1)
 
         main(
@@ -406,7 +407,7 @@ def test_redo_existing_true_overwrites_existing(github_test_data, tmp_path, cont
             workers=1,
             filter_spec="swe-agent__test-repo-1",
             redo_existing=True,
-            config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+            config_spec=[str(DEFAULT_CONFIG_FILE)],
         )
 
     # Should have new result from deterministic model
@@ -467,10 +468,10 @@ class ExceptionModel:
 @pytest.mark.parametrize("workers", [1, 2])
 def test_exception_handling_in_agent_run(tmp_path, workers, container_executable):
     """Test that exceptions during agent.run() are properly handled and recorded"""
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         mock_get_model.return_value = ExceptionModel(RuntimeError, "Agent processing failed")
 
-        with patch("minisweagent.run.benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
+        with patch("benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
             mock_progress_manager = mock_progress_class.return_value
             mock_progress_manager.render_group = None  # For Live context manager
 
@@ -481,7 +482,7 @@ def test_exception_handling_in_agent_run(tmp_path, workers, container_executable
                 output=str(tmp_path),
                 workers=workers,
                 filter_spec="swe-agent__test-repo-1",
-                config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+                config_spec=[str(DEFAULT_CONFIG_FILE)],
             )
 
     # Check that prediction file contains exception information
@@ -509,10 +510,10 @@ def test_exception_handling_in_agent_run(tmp_path, workers, container_executable
 @pytest.mark.parametrize("workers", [1, 2])
 def test_different_exception_types(tmp_path, workers, container_executable):
     """Test that different exception types are properly recorded"""
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         mock_get_model.return_value = ExceptionModel(ValueError, "Invalid input provided")
 
-        with patch("minisweagent.run.benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
+        with patch("benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
             mock_progress_manager = mock_progress_class.return_value
             mock_progress_manager.render_group = None  # For Live context manager
 
@@ -523,7 +524,7 @@ def test_different_exception_types(tmp_path, workers, container_executable):
                 output=str(tmp_path),
                 workers=workers,
                 filter_spec="swe-agent__test-repo-1",
-                config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+                config_spec=[str(DEFAULT_CONFIG_FILE)],
             )
 
     # Check trajectory file for correct exception type
@@ -539,10 +540,10 @@ def test_different_exception_types(tmp_path, workers, container_executable):
 @pytest.mark.slow
 def test_exception_handling_with_progress_manager(tmp_path, container_executable):
     """Test that progress manager receives exception notifications in multithreaded mode"""
-    with patch("minisweagent.run.benchmarks.swebench.get_model") as mock_get_model:
+    with patch("benchmarks.swebench.get_model") as mock_get_model:
         mock_get_model.return_value = ExceptionModel(ConnectionError, "Network timeout")
 
-        with patch("minisweagent.run.benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
+        with patch("benchmarks.swebench.RunBatchProgressManager") as mock_progress_class:
             mock_progress_manager = mock_progress_class.return_value
             mock_progress_manager.render_group = None  # For Live context manager
 
@@ -553,7 +554,7 @@ def test_exception_handling_with_progress_manager(tmp_path, container_executable
                 output=str(tmp_path),
                 workers=2,  # Use multithreaded to test progress manager
                 filter_spec="swe-agent__test-repo-1",
-                config_spec=[str(package_dir / "config" / "benchmarks" / "swebench.yaml")],
+                config_spec=[str(DEFAULT_CONFIG_FILE)],
             )
 
             # Verify progress manager methods were called

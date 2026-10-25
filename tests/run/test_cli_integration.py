@@ -346,10 +346,13 @@ def test_mini_extra_help():
     clean_output = strip_ansi_codes(result.stdout)
     assert "Run extra mini-SWE-agent commands." in clean_output
     assert "inspect" in clean_output
-    assert "swebench" in clean_output
+    assert "swebench" not in clean_output
 
 
-@pytest.mark.parametrize(("subcommand", "args"), [("i", []), ("inspector", ["--help"]), ("missing", [])])
+@pytest.mark.parametrize(
+    ("subcommand", "args"),
+    [("i", []), ("inspector", ["--help"]), ("missing", []), ("swebench", []), ("swebench-single", ["--help"])],
+)
 def test_mini_extra_rejects_aliases_and_unknown_commands(subcommand: str, args: list[str]):
     result = subprocess.run(
         ["mini-extra", subcommand, *args],
@@ -363,23 +366,19 @@ def test_mini_extra_rejects_aliases_and_unknown_commands(subcommand: str, args: 
     assert subcommand in result.stderr
 
 
-@pytest.mark.parametrize(
-    ("subcommand", "option"),
-    [("inspect", "--reasoning"), ("swebench", "--workers"), ("swebench-single", "--instance")],
-)
-def test_mini_extra_subcommand_help(subcommand: str, option: str):
-    """Test that mini-extra subcommands --help work correctly."""
+def test_mini_extra_inspect_help():
+    """Test that the remaining installed utility works."""
     result = subprocess.run(
-        ["mini-extra", subcommand, "--help"],
+        ["mini-extra", "inspect", "--help"],
         capture_output=True,
         text=True,
         timeout=10,
     )
 
     assert result.returncode == 0
-    assert f"usage: mini-extra {subcommand}" in result.stdout
+    assert "usage: mini-extra inspect" in result.stdout
     assert "--help" in result.stdout
-    assert option in result.stdout
+    assert "--reasoning" in result.stdout
 
 
 def test_mini_rejects_environment_selection(capsys):
@@ -516,7 +515,6 @@ def test_output_file_is_created(tmp_path):
 
     with (
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.agents.utils.prompt_user.prompt_session.prompt", return_value=""),
         patch("minisweagent.agents.utils.prompt_user._multiline_prompt_session.prompt", return_value=""),
     ):
         # Setup mocks

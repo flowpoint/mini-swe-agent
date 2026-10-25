@@ -29,16 +29,17 @@ def _ignore_escape(event: KeyPressEvent) -> None:
     pass
 
 
-_history = FileHistory(global_config_dir / "interactive_history.txt")
-prompt_session = PromptSession(history=_history, key_bindings=_key_bindings, editing_mode=EditingMode.EMACS)
 _multiline_prompt_session = PromptSession(
-    history=_history, key_bindings=_key_bindings, editing_mode=EditingMode.EMACS, multiline=True
+    history=FileHistory(global_config_dir / "interactive_history.txt"),
+    key_bindings=_key_bindings,
+    editing_mode=EditingMode.EMACS,
+    multiline=True,
 )
 
 
-def _multiline_prompt() -> str:
+def _multiline_prompt(message: str = "") -> str:
     return _multiline_prompt_session.prompt(
-        "",
+        message,
         bottom_toolbar=HTML(
             "Newline: <b>Enter</b> | Send: <b>Ctrl+G</b> (Shift/Ctrl+Enter if supported) | History: <b>Ctrl+R</b>"
         ),

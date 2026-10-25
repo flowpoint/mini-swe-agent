@@ -1,7 +1,7 @@
 """Shared agent utilities for benchmark runners."""
 
+from benchmarks.utils.batch_progress import RunBatchProgressManager
 from minisweagent.agents.default import DefaultAgent
-from minisweagent.run.benchmarks.utils.batch_progress import RunBatchProgressManager
 
 
 class ProgressTrackingAgent(DefaultAgent):

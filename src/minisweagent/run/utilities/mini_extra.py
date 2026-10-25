@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""This is the central entry point to the mini-extra script. Use subcommands
-to invoke other command line utilities like running benchmarks and inspecting trajectories.
-"""
+"""Entry point for optional CLI utilities."""
 
 import argparse
 import sys
@@ -10,8 +8,6 @@ from importlib import import_module
 
 SUBCOMMANDS = {
     "inspect": ("utilities.inspector", "Browse trajectories"),
-    "swebench": ("benchmarks.swebench", "Run SWE-bench (batch mode)"),
-    "swebench-single": ("benchmarks.swebench_single", "Run SWE-bench (single instance)"),
 }
 
 

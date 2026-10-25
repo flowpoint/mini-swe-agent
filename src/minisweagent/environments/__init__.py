@@ -6,7 +6,6 @@ from importlib import import_module
 from minisweagent import Environment
 
 _ENVIRONMENT_MAPPING = {
-    "docker": "minisweagent.environments.docker.DockerEnvironment",
     "local": "minisweagent.environments.local.LocalEnvironment",
 }
 

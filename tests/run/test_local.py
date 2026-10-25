@@ -85,7 +85,6 @@ def test_local_end_to_end(local_test_data):
 
     with (
         patch("minisweagent.run.mini.get_model") as mock_model_class,
-        patch("minisweagent.agents.utils.prompt_user.prompt_session.prompt", side_effect=lambda *a, **kw: ""),
         patch(
             "minisweagent.agents.utils.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
         ),

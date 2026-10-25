@@ -9,9 +9,6 @@ import pytest
 from minisweagent.config import builtin_config_dir, get_config_from_spec
 
 _REPO_ROOT = Path(__file__).parent.parent
-_SWEBENCH_DEPENDENCY_ERROR = (
-    "SWE-bench support requires the optional dependency group:\npip install 'mini-swe-agent[swebench]'"
-)
 
 
 def _run_with_removed_dependencies(code: str, tmp_path: Path) -> subprocess.CompletedProcess:
@@ -74,24 +71,6 @@ assert "Run mini-SWE-agent in your local environment." in stdout.getvalue()
     )
 
     assert result.returncode == 0, result.stderr
-
-
-def test_swebench_command_reports_optional_dependency_without_side_effects(tmp_path):
-    output_path = tmp_path / "swebench-output"
-    result = _run_with_removed_dependencies(
-        f"""
-import sys
-from minisweagent.run.utilities.mini_extra import main
-sys.argv = ["mini-extra", "swebench", "--output", {str(output_path)!r}]
-main()
-""",
-        tmp_path,
-    )
-
-    assert result.returncode != 0
-    assert _SWEBENCH_DEPENDENCY_ERROR in result.stderr
-    assert "Traceback" not in result.stderr
-    assert not output_path.exists()
 
 
 @pytest.mark.parametrize("config_name", ["default.yaml", "mini.yaml"])

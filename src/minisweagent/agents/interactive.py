@@ -8,11 +8,15 @@ from rich.console import Console
 from rich.rule import Rule
 
 from minisweagent.agents.default import AgentConfig, DefaultAgent
-from minisweagent.agents.utils.prompt_user import _multiline_prompt, prompt_session
+from minisweagent.agents.utils.prompt_user import _multiline_prompt
 from minisweagent.exceptions import LimitsExceeded, Submitted, TimeExceeded, UserInterruption
 from minisweagent.models.utils.content_string import get_content_string
 
 console = Console(highlight=False)
+
+
+def _is_audit_command(text: str) -> bool:
+    return text.startswith("/audit ") and "\n" not in text.strip()
 
 
 class InteractiveAgentConfig(AgentConfig):
@@ -51,7 +55,7 @@ class InteractiveAgent(DefaultAgent):
         # Extend supermethod to handle human mode
         if self.config.mode == "human":
             command = self._prompt_and_handle_slash_commands("[bold yellow]>[/bold yellow] ")
-            if not command.startswith("/audit "):
+            if not _is_audit_command(command):
                 msg = {
                     "role": "user",
                     "content": f"User command: \n```bash\n{command}\n```",
@@ -79,8 +83,8 @@ class InteractiveAgent(DefaultAgent):
                 f"Limits exceeded. Limits: {self.config.step_limit} steps, ${self.config.cost_limit}.\n"
                 f"Current spend: {self.n_calls} steps, ${self.cost:.2f}."
             )
-            self.config.step_limit = int(input("New step limit: "))
-            self.config.cost_limit = float(input("New cost limit: "))
+            self.config.step_limit = int(_multiline_prompt("New step limit: "))
+            self.config.cost_limit = float(_multiline_prompt("New cost limit: "))
             return super().query()
 
     @staticmethod
@@ -88,7 +92,7 @@ class InteractiveAgent(DefaultAgent):
         """Whether an interactive terminal is available to prompt the user.
 
         Returns False for unattended runs (e.g. in CI, or inside a
-        sandbox with stdin redirected from /dev/null), where calling ``input()``
+        sandbox with stdin redirected from /dev/null), where prompting
         would raise ``EOFError`` and crash the run.
         """
         try:
@@ -107,7 +111,7 @@ class InteractiveAgent(DefaultAgent):
                 "[green]Type a comment/command[/green] (/h for available commands)"
                 "\n[bold yellow]>[/bold yellow] "
             ).strip()
-            if not interruption_message or interruption_message == "/u" or interruption_message.startswith("/audit "):
+            if not interruption_message or interruption_message == "/u" or _is_audit_command(interruption_message):
                 interruption_message = "Temporary interruption caught."
             self._interrupt(f"Interrupted by user: {interruption_message}")
 
@@ -125,14 +129,14 @@ class InteractiveAgent(DefaultAgent):
         if self.config.confirm_exit:
             message = (
                 "[bold yellow]Agent wants to finish.[/bold yellow] "
-                "[bold green]Type new task[/bold green] or [bold]Enter[/bold] to quit "
+                "[bold green]Type new task[/bold green] or submit an empty message to quit "
                 "([bold]/h[/bold] for commands)\n"
                 "[bold yellow]>[/bold yellow] "
             )
             user_input = self._prompt_and_handle_slash_commands(message).strip()
             if user_input == "/u":  # directly continue
                 self._interrupt("Switched to human mode.")
-            elif user_input.startswith("/audit "):  # ask again
+            elif _is_audit_command(user_input):  # ask again
                 return self._check_for_new_task_or_submit(e)
             elif user_input:
                 self._interrupt(f"The user added a new task: {user_input}", itype="UserNewTask")
@@ -145,7 +149,7 @@ class InteractiveAgent(DefaultAgent):
 
     def confirm_action(self, action: dict) -> None:
         prompt = (
-            "[bold yellow]Execute command?[/] [green][bold]Enter[/] to continue[/], "
+            "[bold yellow]Execute command?[/] [green]Submit an empty message to continue[/], "
             "[red]type [bold]comment[/] to reject[/], or [blue][bold]/h[/] to show available commands[/]\n"
             "[bold yellow]>[/bold yellow] "
         )
@@ -154,7 +158,7 @@ class InteractiveAgent(DefaultAgent):
                 return
             case "/u":  # Skip execution action and get back to query
                 self._interrupt("Commands not executed. Switching to human mode", itype="UserRejection")
-            case _ if user_input.startswith("/audit "):
+            case _ if _is_audit_command(user_input):
                 self.audit(action)
             case _:
                 self._interrupt(
@@ -162,26 +166,24 @@ class InteractiveAgent(DefaultAgent):
                     itype="UserRejection",
                 )
 
-    def _prompt_and_handle_slash_commands(self, prompt: str, *, _multiline: bool = False) -> str:
+    def _prompt_and_handle_slash_commands(self, prompt: str) -> str:
         """Prompts the user, takes care of /h (followed by requery) and sets the mode. Returns the user input."""
         console.print(prompt, end="")
-        if _multiline:
-            return _multiline_prompt()
-        user_input = prompt_session.prompt("")
-        if user_input == "/m":
-            return self._prompt_and_handle_slash_commands(prompt, _multiline=True)
-        if user_input == "/h":
+        user_input = _multiline_prompt()
+        command = user_input.strip()
+        if "\n" in command:
+            return user_input
+        if command == "/h":
             console.print(
                 f"Current mode: [bold green]{self.config.mode}[/bold green]\n"
                 f"Audit timeout: [bold green]{self.config.audit_timeout:g}s[/bold green]\n"
                 "[bold green]/audit SECONDS[/bold green] to resume model commands with this audit window (0: immediate; inf: wait for continuation)\n"
-                f"[bold green]/u[/bold green] to switch to [bold yellow]human[/bold yellow] mode (execute commands issued by the user)\n"
-                f"[bold green]/m[/bold green] to enter multiline comment",
+                "[bold green]/u[/bold green] to switch to [bold yellow]human[/bold yellow] mode (execute commands issued by the user)",
             )
             return self._prompt_and_handle_slash_commands(prompt)
-        if user_input == "/u" or user_input.startswith("/audit "):
-            mode = "human" if user_input == "/u" else "agent"
-            timeout = self.config.audit_timeout if mode == "human" else float(user_input.split(maxsplit=1)[1])
+        if command == "/u" or _is_audit_command(command):
+            mode = "human" if command == "/u" else "agent"
+            timeout = self.config.audit_timeout if mode == "human" else float(command.split(maxsplit=1)[1])
             if not timeout >= 0:
                 raise ValueError("audit timeout must be non-negative (or inf)")
             if self.config.mode == mode and self.config.audit_timeout == timeout:
@@ -191,5 +193,5 @@ class InteractiveAgent(DefaultAgent):
             self.config.mode = mode
             self.config.audit_timeout = timeout
             console.print(f"Mode: [bold green]{mode}[/bold green]; audit timeout: [bold green]{timeout:g}s[/bold green].")
-            return user_input
+            return command
         return user_input

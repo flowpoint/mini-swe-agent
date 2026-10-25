@@ -7,4 +7,6 @@
 
 ## Extras
 
-* `extra/swebench.py` - Benchmark the performance of the `default.py` agent.
+* `utilities/inspector.py` - Browse trajectories with `mini-extra inspect`.
+
+SWE-bench runners live in the checkout's `benchmarks/` directory and are not installed with the CLI.

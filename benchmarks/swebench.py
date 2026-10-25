@@ -17,12 +17,12 @@ from pathlib import Path
 from jinja2 import StrictUndefined, Template
 from rich.live import Live
 
+from benchmarks.docker import DockerEnvironment
+from benchmarks.utils.batch_progress import RunBatchProgressManager
+from benchmarks.utils.common import ProgressTrackingAgent
 from minisweagent import Environment
-from minisweagent.config import builtin_config_dir, get_config_from_spec
-from minisweagent.environments.docker import DockerEnvironment
+from minisweagent.config import get_config_from_spec
 from minisweagent.models import get_model
-from minisweagent.run.benchmarks.utils.batch_progress import RunBatchProgressManager
-from minisweagent.run.benchmarks.utils.common import ProgressTrackingAgent
 from minisweagent.utils.log import add_file_handler, logger
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
@@ -35,7 +35,7 @@ https://mini-swe-agent.com/latest/usage/swebench/
 _CONFIG_SPEC_HELP_TEXT = """Path to config files, filenames, or key-value pairs.
 
 IMPORTANT: If you set this option, the default config file will not be used.
-So you need to explicitly set it, for example with -c swebench.yaml <other options>.
+So you need to explicitly set it, for example with -c benchmarks/swebench.yaml <other options>.
 
 Multiple configs will be recursively merged.
 
@@ -43,12 +43,12 @@ Examples:
 
 -c model.model_kwargs.temperature=0  You forgot to add the default config file! See above.
 
--c swebench.yaml -c model.model_kwargs.temperature=0.5
+-c benchmarks/swebench.yaml -c model.model_kwargs.temperature=0.5
 
--c swebench.yaml -c agent.step_limit=50
+-c benchmarks/swebench.yaml -c agent.step_limit=50
 """
 
-DEFAULT_CONFIG_FILE = builtin_config_dir / "benchmarks" / "swebench.yaml"
+DEFAULT_CONFIG_FILE = Path(__file__).with_name("swebench.yaml")
 
 DATASET_MAPPING = {
     "full": "princeton-nlp/SWE-Bench",
@@ -62,7 +62,7 @@ DATASET_MAPPING = {
 
 _OUTPUT_FILE_LOCK = threading.Lock()
 SWEBENCH_DEPENDENCY_ERROR = (
-    "SWE-bench support requires the optional dependency group:\npip install 'mini-swe-agent[swebench]'"
+    "SWE-bench requires checkout dependencies:\npip install -r benchmarks/requirements.txt"
 )
 
 

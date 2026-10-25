@@ -1,7 +1,6 @@
 import pytest
 
 from minisweagent.environments import get_environment_class
-from minisweagent.environments.docker import DockerEnvironment
 from minisweagent.environments.local import LocalEnvironment
 
 
@@ -12,9 +11,9 @@ class TestGetEnvironmentClass:
         assert env_class is LocalEnvironment
 
     def test_get_environment_class_docker_shorthand(self):
-        """Docker is the only optional environment supported by the registry."""
-        env_class = get_environment_class("docker")
-        assert env_class is DockerEnvironment
+        """Docker belongs to the checkout-only benchmark runners."""
+        with pytest.raises(ValueError, match="Unknown environment type: docker. Available: local"):
+            get_environment_class("docker")
 
     def test_get_environment_class_invalid_spec(self):
         """Test that get_environment_class raises ValueError for invalid spec."""

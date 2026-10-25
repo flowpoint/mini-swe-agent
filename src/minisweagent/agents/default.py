@@ -7,6 +7,7 @@ import logging
 import math
 import time
 import traceback
+from importlib import import_module
 from pathlib import Path
 
 from jinja2 import StrictUndefined, Template
@@ -183,7 +184,10 @@ class DefaultAgent:
             time.sleep(self.config.audit_timeout)
 
     def confirm_action(self, action: dict) -> None:
-        if reason := input("Enter to continue, or explain why this command should not run: ").strip():
+        reason = import_module("minisweagent.agents.utils.prompt_user")._multiline_prompt(
+            "Submit an empty message to continue, or explain why this command should not run:\n> "
+        ).strip()
+        if reason:
             raise UserInterruption({"role": "user", "content": f"Command not executed: {reason}"})
 
     def serialize(self, *extra_dicts) -> dict:

@@ -24,7 +24,7 @@ model:
     # repeat_penalty: {{ params.get('repeat_penalty', 1.0) | tojson }}  # llama.cpp: discourage repetition when greater than 1.
 
 # agent:
-#   audit_timeout: 0  # Seconds per command: 0 runs immediately; positive values wait for objections; .inf requires Enter.
+#   audit_timeout: 0  # Seconds per command: 0 runs immediately; positive values wait; .inf requires an empty submission.
 #   mode: agent  # agent: sample commands from the model; human: enter commands yourself.
 #   confirm_exit: true  # Ask for another task when the model finishes.
 #   step_limit: 100  # Maximum model calls per run; 0 disables this limit.

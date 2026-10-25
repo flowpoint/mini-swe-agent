@@ -4,27 +4,27 @@ import argparse
 import sys
 from pathlib import Path
 
-from minisweagent import global_config_dir
-from minisweagent.agents import get_agent
-from minisweagent.config import builtin_config_dir, get_config_from_spec
-from minisweagent.models import get_model
-from minisweagent.run.benchmarks.swebench import (
+from benchmarks.swebench import (
     DATASET_MAPPING,
+    DEFAULT_CONFIG_FILE,
     SWEBENCH_DEPENDENCY_ERROR,
     get_sb_environment,
     load_dataset,
 )
+from minisweagent import global_config_dir
+from minisweagent.agents import get_agent
+from minisweagent.config import get_config_from_spec
+from minisweagent.models import get_model
 from minisweagent.run.utilities import nonnegative_float
 from minisweagent.utils.log import logger
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_OUTPUT_FILE = global_config_dir / "last_swebench_single_run.traj.json"
-DEFAULT_CONFIG_FILE = builtin_config_dir / "benchmarks" / "swebench.yaml"
 
 _CONFIG_SPEC_HELP_TEXT = """Path to config files, filenames, or key-value pairs.
 
 IMPORTANT: If you set this option, the default config file will not be used.
-So you need to explicitly set it, for example with -c swebench.yaml <other options>.
+So you need to explicitly set it, for example with -c benchmarks/swebench.yaml <other options>.
 
 Multiple configs will be recursively merged.
 
@@ -32,9 +32,9 @@ Examples:
 
 -c model.model_kwargs.temperature=0  You forgot to add the default config file! See above.
 
--c swebench.yaml -c model.model_kwargs.temperature=0.5
+-c benchmarks/swebench.yaml -c model.model_kwargs.temperature=0.5
 
--c swebench.yaml -c agent.audit_timeout=0
+-c benchmarks/swebench.yaml -c agent.audit_timeout=0
 """
 
 

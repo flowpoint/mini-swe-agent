@@ -50,10 +50,6 @@ dev = [
     "mini-swe-agent[inspector]",
 ]
 
-swebench = [
-    "datasets>=4.5.0",
-]
-
 inspector = [
     "textual",
 ]
@@ -78,7 +74,7 @@ where = ["src"]
 include = ["minisweagent*"]
 
 [tool.setuptools.package-data]
-minisweagent = ["config/**/*"]
+minisweagent = ["config/*.yaml", "config/*.yaml.jinja", "config/*.tcss"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
