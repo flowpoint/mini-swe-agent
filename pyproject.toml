@@ -31,7 +31,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "pyyaml",
     "requests",
     "jinja2",
     "pydantic >= 2.0",  # v2 required for safe mutable default arguments
@@ -41,6 +40,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pyyaml==6.0.3",
     "pytest",
     "pytest-cov",
     "pytest-asyncio",
@@ -74,7 +74,7 @@ where = ["src"]
 include = ["minisweagent*"]
 
 [tool.setuptools.package-data]
-minisweagent = ["config/*.yaml", "config/*.yaml.jinja", "config/*.tcss"]
+minisweagent = ["config/*.yaml", "config/*.yaml.jinja", "config/*.tcss", "_vendor/*/LICENSE", "_vendor/*/README.md"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -107,6 +107,7 @@ exclude = [
     "venv",
     # ---- project specific ----
     "tests/test_data",
+    "src/minisweagent/_vendor",
     # Exclude commands so they don't get the __future__ imports
     "config/commands",
 ]

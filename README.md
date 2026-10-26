@@ -26,7 +26,7 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-The default installation uses `requests` for HTTP. It does not install `litellm`, `openai`, or `datasets`.
+The default installation uses `requests` for HTTP and a private, trimmed PyYAML safe loader for configuration. Rich/Pygments provide terminal rendering, and prompt-toolkit handles editing. It does not install `litellm`, `openai`, or `datasets`.
 
 ## Start llama.cpp
 
@@ -79,7 +79,7 @@ agent:
   wall_time_limit_seconds: 3600
 ~~~~
 
-Load a full custom configuration with `mini -c /path/to/config.yaml -t "..."`, or merge overrides onto the packaged base:
+Assistant responses render as Markdown with highlighted code on terminals; piped output retains the original text. Set `agent.code_theme` to `ansi_light` for light terminals or another Pygments theme. `NO_COLOR` disables colors. Load a full custom configuration with `mini -c /path/to/config.yaml -t "..."`, or merge overrides onto the packaged base:
 
 ```bash
 mini -c mini.yaml -c model.base_url=http://127.0.0.1:8080/v1 -t "Inspect this project"

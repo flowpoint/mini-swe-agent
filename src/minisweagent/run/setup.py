@@ -3,9 +3,9 @@ import json
 import math
 
 import requests
-import yaml
 from jinja2 import StrictUndefined, Template
 
+from minisweagent._vendor import yaml
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.models import get_model
 from minisweagent.models.actions_text import parse_regex_actions

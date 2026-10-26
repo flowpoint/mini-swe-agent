@@ -1,2 +1,3 @@
 prune benchmarks
 prune tests/benchmarks
+include scripts/vendor_yaml.py

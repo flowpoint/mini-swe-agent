@@ -4,8 +4,10 @@ import re
 import sys
 from typing import Literal, NoReturn
 
-from rich.console import Console
+from rich.console import Console, RenderableType
+from rich.markdown import Markdown
 from rich.rule import Rule
+from rich.text import Text
 
 from minisweagent.agents.default import AgentConfig, DefaultAgent
 from minisweagent.agents.prompt_user import _multiline_prompt
@@ -26,6 +28,8 @@ class InteractiveAgentConfig(AgentConfig):
     """Skip manual audit waits for commands matching these regular expressions."""
     confirm_exit: bool = True
     """If the agent wants to finish, do we ask for confirmation from user?"""
+    code_theme: str = "ansi_dark"
+    """Pygments code theme; ansi_dark/ansi_light use the terminal palette."""
 
 
 class InteractiveAgent(DefaultAgent):
@@ -35,6 +39,13 @@ class InteractiveAgent(DefaultAgent):
 
     def _interrupt(self, content: str, *, itype: str = "UserInterruption") -> NoReturn:
         raise UserInterruption({"role": "user", "content": content, "extra": {"interrupt_type": itype}})
+
+    def render_message(self, message: dict) -> RenderableType:
+        """Override to customize display without changing the conversation."""
+        content = get_content_string(message)
+        if (message.get("role") or message.get("type")) == "assistant":
+            return Markdown(content, code_theme=self.config.code_theme)
+        return Text(content)
 
     def add_messages(self, *messages: dict) -> list[dict]:
         # Extend supermethod to print messages
@@ -48,7 +59,10 @@ class InteractiveAgent(DefaultAgent):
                 )
             else:
                 console.print(f"\n[bold green]{role.capitalize()}[/bold green]:\n", end="", highlight=False)
-            console.print(content, highlight=False, markup=False)
+            console.print(
+                self.render_message(msg) if console.is_terminal and not console.is_dumb_terminal else content,
+                highlight=False, markup=False, soft_wrap=not console.is_terminal,
+            )
         return super().add_messages(*messages)
 
     def query(self) -> dict:

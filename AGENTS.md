@@ -19,7 +19,7 @@ Keep these extension points easy to customize as needed:
 - Sampling and prompt tuning.
 - Per-command auditing through the replaceable `audit(action)` hook. `audit_timeout` is the objection window: 0 proceeds immediately, finite windows proceed if uninterrupted, and infinity requires explicit continuation. Manual review pauses for Ctrl-C; concurrent auditors can send SIGINT. Honor interruptions before execution and stop an active local command on interruption.
 - Context compaction.
-- Response rendering, including optional syntax highlighting.
+- Response rendering through `InteractiveAgent.render_message`: Markdown and syntax highlighting on terminals, with original text preserved in trajectories and piped output. Keep Rich/Pygments and prompt-toolkit for rendering and editing; avoid adding another display stack.
 
 These guide the design; add abstractions and features only when a concrete use case needs them.
 

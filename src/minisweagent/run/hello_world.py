@@ -7,9 +7,8 @@ import logging
 import os
 from pathlib import Path
 
-import yaml
-
 from minisweagent import package_dir
+from minisweagent._vendor import yaml
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.llamacpp_model import LlamaCppModel

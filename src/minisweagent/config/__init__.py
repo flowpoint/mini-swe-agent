@@ -4,9 +4,8 @@ import json
 import os
 from pathlib import Path
 
-import yaml
-
 from minisweagent import global_config_dir
+from minisweagent._vendor import yaml
 
 builtin_config_dir = Path(__file__).parent
 
