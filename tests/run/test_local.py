@@ -86,7 +86,7 @@ def test_local_end_to_end(local_test_data):
     with (
         patch("minisweagent.run.mini.get_model") as mock_model_class,
         patch(
-            "minisweagent.agents.utils.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
+            "minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
         ),
         patch("builtins.input", return_value=""),  # For LimitsExceeded handling
     ):

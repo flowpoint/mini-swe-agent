@@ -8,9 +8,9 @@ from rich.console import Console
 from rich.rule import Rule
 
 from minisweagent.agents.default import AgentConfig, DefaultAgent
-from minisweagent.agents.utils.prompt_user import _multiline_prompt
+from minisweagent.agents.prompt_user import _multiline_prompt
 from minisweagent.exceptions import LimitsExceeded, Submitted, TimeExceeded, UserInterruption
-from minisweagent.models.utils.content_string import get_content_string
+from minisweagent.models.content_string import get_content_string
 
 console = Console(highlight=False)
 

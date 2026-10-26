@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from minisweagent.exceptions import FormatError
 from minisweagent.models import GLOBAL_MODEL_STATS
-from minisweagent.models.utils.actions_text import format_observation_messages, parse_regex_actions
+from minisweagent.models.actions_text import format_observation_messages, parse_regex_actions
 
 logger = logging.getLogger("llamacpp_model")
 

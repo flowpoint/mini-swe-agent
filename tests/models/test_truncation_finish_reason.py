@@ -3,7 +3,7 @@
 import pytest
 
 from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.actions_text import parse_regex_actions
+from minisweagent.models.actions_text import parse_regex_actions
 
 _TEMPLATE = "{% if finish_reason == 'length' %}cut off{% else %}{{ error }}{% endif %}"
 

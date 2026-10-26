@@ -515,7 +515,7 @@ def test_output_file_is_created(tmp_path):
 
     with (
         patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.agents.utils.prompt_user._multiline_prompt_session.prompt", return_value=""),
+        patch("minisweagent.agents.prompt_user._multiline_prompt_session.prompt", return_value=""),
     ):
         # Setup mocks
         mock_model = Mock()

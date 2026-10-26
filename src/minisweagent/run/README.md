@@ -7,6 +7,6 @@
 
 ## Extras
 
-* `utilities/inspector.py` - Browse trajectories with `mini-extra inspect`.
+* `inspector.py` - Browse trajectories with `mini-extra inspect`.
 
 SWE-bench runners live in the checkout's `benchmarks/` directory and are not installed with the CLI.

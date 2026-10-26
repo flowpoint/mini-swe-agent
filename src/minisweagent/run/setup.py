@@ -8,9 +8,9 @@ from jinja2 import StrictUndefined, Template
 
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.models import get_model
+from minisweagent.models.actions_text import parse_regex_actions
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModelConfig, normalize_base_url
-from minisweagent.models.utils.actions_text import parse_regex_actions
-from minisweagent.run.utilities import positive_float
+from minisweagent.run import positive_float
 from minisweagent.utils.serialize import recursive_merge
 
 

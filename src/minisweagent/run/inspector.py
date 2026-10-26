@@ -19,7 +19,8 @@ from textual.command import DiscoveryHit, Hit, Hits, Provider
 from textual.containers import Container, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Static
 
-from minisweagent.models.utils.content_string import get_content_string
+from minisweagent.config import builtin_config_dir
+from minisweagent.models.content_string import get_content_string
 
 
 def _messages_to_steps(messages: list[dict]) -> list[list[dict]]:
@@ -93,7 +94,7 @@ class TrajectoryInspector(App):
 
     def __init__(self, trajectory_files: list[Path], show_reasoning: bool = True):
         css_path = os.environ.get(
-            "MSWEA_INSPECTOR_STYLE_PATH", str(Path(__file__).parent.parent.parent / "config" / "inspector.tcss")
+            "MSWEA_INSPECTOR_STYLE_PATH", str(builtin_config_dir / "inspector.tcss")
         )
         self.__class__.CSS = Path(css_path).read_text()
 

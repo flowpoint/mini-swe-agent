@@ -7,7 +7,7 @@ import sys
 from importlib import import_module
 
 SUBCOMMANDS = {
-    "inspect": ("utilities.inspector", "Browse trajectories"),
+    "inspect": ("inspector", "Browse trajectories"),
 }
 
 

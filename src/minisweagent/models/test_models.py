@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from minisweagent.models import GLOBAL_MODEL_STATS
-from minisweagent.models.utils.actions_text import format_observation_messages
+from minisweagent.models.actions_text import format_observation_messages
 
 
 def make_output(content: str, actions: list[dict], cost: float = 1.0) -> dict:

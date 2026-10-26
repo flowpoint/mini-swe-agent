@@ -33,7 +33,7 @@ src/minisweagent/models        # Model interfaces
 src/minisweagent/run           # CLI entry points
 ```
 
-Entry points wire together an agent, environment, and model. Keep each component small and replaceable, using functions or simple classes as appropriate.
+Entry points wire together an agent, environment, and model. Keep helpers directly in their component folders: `run/inspector.py`, `agents/prompt_user.py`, `models/actions_text.py`, etc. Keep each component small and replaceable, using functions or simple classes as appropriate.
 
 # Style guide
 

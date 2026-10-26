@@ -184,7 +184,7 @@ class DefaultAgent:
             time.sleep(self.config.audit_timeout)
 
     def confirm_action(self, action: dict) -> None:
-        reason = import_module("minisweagent.agents.utils.prompt_user")._multiline_prompt(
+        reason = import_module("minisweagent.agents.prompt_user")._multiline_prompt(
             "Submit an empty message to continue, or explain why this command should not run:\n> "
         ).strip()
         if reason:

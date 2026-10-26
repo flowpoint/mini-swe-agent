@@ -15,7 +15,7 @@ from minisweagent import global_config_dir
 from minisweagent.agents import get_agent
 from minisweagent.config import get_config_from_spec
 from minisweagent.models import get_model
-from minisweagent.run.utilities import nonnegative_float
+from minisweagent.run import nonnegative_float
 from minisweagent.utils.log import logger
 from minisweagent.utils.serialize import UNSET, recursive_merge
 

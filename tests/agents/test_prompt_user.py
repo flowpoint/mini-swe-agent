@@ -31,7 +31,7 @@ from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
-    from minisweagent.agents.utils.prompt_user import _multiline_prompt
+    from minisweagent.agents.prompt_user import _multiline_prompt
 
     pipe.send_text('first' + sys.argv[2] + 'second\x1b\rtyping\x1bb\x1b[200~\npasted\r\ntext\x07\x1b[201~' + sys.argv[1])
     message = _multiline_prompt()

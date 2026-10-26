@@ -19,8 +19,7 @@ from minisweagent.config import builtin_config_dir, get_config_from_spec, get_us
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
-from minisweagent.run import setup
-from minisweagent.run.utilities import nonnegative_float, positive_float
+from minisweagent.run import nonnegative_float, positive_float, setup
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
@@ -61,7 +60,7 @@ console = Console(highlight=False)
 
 
 def _multiline_prompt() -> str:
-    return import_module("minisweagent.agents.utils.prompt_user")._multiline_prompt()
+    return import_module("minisweagent.agents.prompt_user")._multiline_prompt()
 
 
 def _new_output_file() -> Path:

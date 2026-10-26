@@ -1,4 +1,4 @@
-from minisweagent.models.utils.content_string import get_content_string
+from minisweagent.models.content_string import get_content_string
 
 
 def test_plain_string_content():
