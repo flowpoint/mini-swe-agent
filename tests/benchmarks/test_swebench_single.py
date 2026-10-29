@@ -1,5 +1,5 @@
 import re
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -7,7 +7,7 @@ from benchmarks.swebench_single import DEFAULT_CONFIG_FILE, main
 from minisweagent.models.test_models import DeterministicModel, make_output
 
 
-def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
+def _make_model_from_fixture(text_outputs: list[str], **kwargs) -> DeterministicModel:
     """Create a DeterministicModel from trajectory fixture data (raw text outputs)."""
 
     def parse_command(text: str) -> list[dict]:
@@ -15,43 +15,9 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         return [{"command": match.group(1)}] if match else []
 
     return DeterministicModel(
-        outputs=[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
-        cost_per_call=cost_per_call,
+        outputs=[make_output(text, parse_command(text)) for text in text_outputs],
         **kwargs,
     )
-
-
-def test_swebench_single_cost_limit_zero_is_preserved():
-    """Test that an explicit cost_limit=0 is not dropped during config merge."""
-    with (
-        patch(
-            "benchmarks.swebench_single.load_dataset",
-            return_value=[{"instance_id": "instance", "problem_statement": "test"}],
-        ),
-        patch("benchmarks.swebench_single.get_sb_environment") as mock_get_env,
-        patch("benchmarks.swebench_single.get_model") as mock_get_model,
-        patch("benchmarks.swebench_single.get_agent") as mock_get_agent,
-        patch("benchmarks.swebench_single.get_config_from_spec", return_value={}),
-    ):
-        mock_get_model.return_value = object()
-        mock_get_env.return_value = object()
-        mock_get_agent.return_value = Mock()
-
-        main(
-            subset="_test",
-            split="test",
-            instance_spec="0",
-            model_name="deterministic",
-            config_spec=[str(DEFAULT_CONFIG_FILE)],
-            exit_immediately=False,
-            output=None,
-            model_class=None,
-            agent_class=None,
-            audit_timeout=None,
-            cost_limit=0,
-        )
-
-        assert mock_get_agent.call_args.args[2]["cost_limit"] == 0
 
 
 @pytest.mark.slow
@@ -64,12 +30,10 @@ def test_swebench_single_end_to_end(github_test_data, tmp_path, container_execut
 
     with (
         patch("benchmarks.swebench_single.get_model") as mock_get_model,
-        patch(
-            "minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
-        ),
+        patch("minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""),
         patch("builtins.input", return_value=""),  # For LimitsExceeded handling
     ):
-        mock_get_model.return_value = _make_model_from_fixture(model_responses, cost_per_call=0.1)
+        mock_get_model.return_value = _make_model_from_fixture(model_responses)
 
         # Test with explicit instance ID
         output_path = tmp_path / "test_output.json"
@@ -84,7 +48,6 @@ def test_swebench_single_end_to_end(github_test_data, tmp_path, container_execut
             model_class=None,
             agent_class=None,
             audit_timeout=None,
-            cost_limit=None,
         )
 
         # Verify model was called with correct parameters
@@ -103,12 +66,10 @@ def test_swebench_single_end_to_end_exit_immediately(github_test_data, tmp_path,
 
     with (
         patch("benchmarks.swebench_single.get_model") as mock_get_model,
-        patch(
-            "minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
-        ),
+        patch("minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""),
         patch("builtins.input", return_value=""),  # For LimitsExceeded handling
     ):
-        mock_get_model.return_value = _make_model_from_fixture(model_responses, cost_per_call=0.1)
+        mock_get_model.return_value = _make_model_from_fixture(model_responses)
 
         # Test with explicit instance ID
         output_path = tmp_path / "test_output.json"
@@ -123,7 +84,6 @@ def test_swebench_single_end_to_end_exit_immediately(github_test_data, tmp_path,
             model_class=None,
             agent_class=None,
             audit_timeout=None,
-            cost_limit=None,
         )
 
         # Verify model was called with correct parameters

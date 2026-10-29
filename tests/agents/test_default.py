@@ -6,7 +6,6 @@ import yaml
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.exceptions import FormatError
-from minisweagent.models import GLOBAL_MODEL_STATS
 from minisweagent.models.test_models import DeterministicModel, make_output
 
 
@@ -92,19 +91,6 @@ def test_step_limit_enforcement(model_factory):
     assert agent.n_calls == 1
 
 
-def test_cost_limit_enforcement(model_factory):
-    """Test agent stops when cost limit is reached."""
-    factory, config = model_factory
-    agent = DefaultAgent(
-        model=factory([("Test", [{"command": "echo 'test'"}])]),
-        env=LocalEnvironment(),
-        **{**config, "cost_limit": 0.5},
-    )
-
-    info = agent.run("Test cost limit")
-    assert info["exit_status"] == "LimitsExceeded"
-
-
 def test_timeout_handling(model_factory):
     """Test agent handles command timeouts properly."""
     factory, config = model_factory
@@ -167,7 +153,7 @@ def test_multiple_steps_before_completion(model_factory):
             ]
         ),
         env=LocalEnvironment(),
-        **{**config, "cost_limit": 5.0},  # Increase cost limit to allow all 4 calls
+        **config,
     )
 
     info = agent.run("Multi-step task")
@@ -194,7 +180,6 @@ def test_custom_config(model_factory):
             "system_template": "You are a test assistant.",
             "instance_template": "Task: {{task}}. Return bash command.",
             "step_limit": 2,
-            "cost_limit": 1.0,
         },
     )
 
@@ -206,7 +191,7 @@ def test_custom_config(model_factory):
 
 
 def test_render_template_model_stats(model_factory):
-    """Test that render_template has access to n_model_calls and model_cost from agent."""
+    """Test that render_template has access to n_model_calls from agent."""
     factory, config = model_factory
     agent = DefaultAgent(
         model=factory(
@@ -225,8 +210,8 @@ def test_render_template_model_stats(model_factory):
     agent.query()
 
     # Test template rendering with agent stats
-    template = "Calls: {{n_model_calls}}, Cost: {{model_cost}}"
-    assert agent._render_template(template) == "Calls: 2, Cost: 2.0"
+    template = "Calls: {{n_model_calls}}"
+    assert agent._render_template(template) == "Calls: 2"
 
 
 def test_messages_include_timestamps(model_factory):
@@ -319,7 +304,7 @@ def test_observations_captured(model_factory):
             ]
         ),
         env=LocalEnvironment(),
-        **{**config, "cost_limit": 5.0},
+        **config,
     )
 
     agent.run("Multi-step task")
@@ -431,33 +416,28 @@ def test_format_error_counter_resets_on_success(default_config):
     assert info["submission"] == "ok\n"
 
 
-class _BilledFormatErrorModel(DeterministicModel):
-    """Bills the call and then fails to parse it, the way the real model classes do: the cost is
-    charged to the global stats and persisted on the FormatError before it propagates."""
+class _AlwaysFormatErrorModel(DeterministicModel):
+    """A model that always returns malformed actions."""
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
-        GLOBAL_MODEL_STATS.add(self.config.cost_per_call)
+
         raise FormatError(
             {
                 "role": "user",
                 "content": "No fenced bash action found in the response.",
-                "extra": {"interrupt_type": "FormatError", "cost": self.config.cost_per_call},
+                "extra": {"interrupt_type": "FormatError"},
             }
         )
 
 
-def test_format_errors_count_against_cost_limit(default_config, reset_global_stats):
-    """Turns that fail to parse are still billed, so they have to count against cost_limit.
-    step_limit is only a backstop here: if the format-error path stopped charging, the run would
-    run on to that limit with agent.cost still at zero."""
+def test_format_errors_count_against_step_limit(default_config):
+    """Malformed responses still consume model calls."""
     agent = DefaultAgent(
-        model=_BilledFormatErrorModel(outputs=[], cost_per_call=1.0),
+        model=_AlwaysFormatErrorModel(outputs=[]),
         env=LocalEnvironment(),
-        **{**default_config, "cost_limit": 2.5, "step_limit": 8, "max_consecutive_format_errors": 0},
+        **{**default_config, "step_limit": 3, "max_consecutive_format_errors": 0},
     )
 
-    info = agent.run("Test billed format errors")
+    info = agent.run("Test format errors")
     assert info["exit_status"] == "LimitsExceeded"
     assert agent.n_calls == 3
-    assert agent.cost == 3.0
-    assert agent.cost == GLOBAL_MODEL_STATS.cost

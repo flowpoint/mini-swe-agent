@@ -14,6 +14,7 @@ from typing import Any
 
 from rich.console import Console
 
+from minisweagent import global_data_dir
 from minisweagent.agents import get_agent
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.environments.local import LocalEnvironment
@@ -23,10 +24,7 @@ from minisweagent.run import nonnegative_float, positive_float, setup
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
-_data_home = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local/share")
-if not _data_home.is_absolute():
-    _data_home = Path.home() / ".local/share"
-DEFAULT_OUTPUT_FILE = _data_home / "mini-swe-agent" / "trajectories" / "latest.traj.json"
+DEFAULT_OUTPUT_FILE = global_data_dir / "trajectories" / "latest.traj.json"
 
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
@@ -93,8 +91,11 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
     parser.add_argument("-t", "--task", help="Task/problem statement")
-    parser.add_argument("--audit-timeout", type=nonnegative_float, help="Audit seconds per command (default: 0; inf waits for continuation)")
-    parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
+    parser.add_argument(
+        "--audit-timeout",
+        type=nonnegative_float,
+        help="Audit seconds per command (default: 0; inf waits for continuation)",
+    )
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
     parser.add_argument(
         "-o",
@@ -117,7 +118,6 @@ def main(
     agent_class: str | None = None,
     task: str | None = None,
     audit_timeout: float | None = None,
-    cost_limit: float | None = None,
     config_spec: list[str] | None = None,
     output: Path | None = DEFAULT_OUTPUT_FILE,
     exit_immediately: bool = False,
@@ -133,29 +133,41 @@ def main(
         raise SystemExit("mini: no config file specified; run mini setup or use --config PATH")
     console.print(f"Building agent config from specs: [bold green]{config_spec}[/bold green]")
     configs = [get_config_from_spec(spec) for spec in config_spec]
-    configs.append({
-        "run": {
-            "task": task or UNSET,
-        },
-        "agent": {
-            "agent_class": agent_class or UNSET,
-            "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
-            "cost_limit": cost_limit if cost_limit is not None else UNSET,
-            "confirm_exit": False if exit_immediately else UNSET,
-            "output_path": output or UNSET,
-        },
-        "model": {
-            "model_class": model_class or UNSET,
-            "model_name": model_name or UNSET,
-        },
-    })
+    configs.append(
+        {
+            "run": {
+                "task": task or UNSET,
+            },
+            "agent": {
+                "agent_class": agent_class or UNSET,
+                "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
+                "output_path": output or UNSET,
+            },
+            "model": {
+                "model_class": model_class or UNSET,
+                "model_name": model_name or UNSET,
+            },
+        }
+    )
     config = recursive_merge(*configs)
+    if unknown := config.keys() - {"agent", "environment", "model", "run"}:
+        raise ValueError(f"Unknown config sections: {', '.join(sorted(unknown))}")
+    for section, settings in config.items():
+        if not isinstance(settings, dict):
+            raise ValueError(f"Config section {section!r} must be a mapping")
+    if unknown := config.get("run", {}).keys() - {"task"}:
+        raise ValueError(f"Unknown run settings: {', '.join(sorted(unknown))}")
+    if "task" in config.get("run", {}) and not isinstance(config["run"]["task"], str):
+        raise ValueError("run.task must be text")
 
     environment_config = config.get("environment", {})
     if environment_config.pop("environment_class", "local") != "local":
         raise SystemExit("mini: only local execution is supported; run mini itself inside your container")
     env = LocalEnvironment(**environment_config)
     model = get_model(config=config.get("model", {}))
+    agent = get_agent(model, env, config.get("agent", {}), default_type="interactive")
+    if exit_immediately and hasattr(agent.config, "confirm_exit"):
+        agent.config.confirm_exit = False
     if isinstance(model, LlamaCppModel):
         model.check_connection(timeout=check_timeout)
     if (run_task := config.get("run", {}).get("task", UNSET)) is UNSET:
@@ -164,16 +176,17 @@ def main(
         console.print("[bold green]Got that, thanks![/bold green]")
 
     if output == DEFAULT_OUTPUT_FILE:
-        config["agent"]["output_path"] = _new_output_file()
-    agent = get_agent(model, env, config.get("agent", {}), default_type="interactive")
+        agent.config.output_path = _new_output_file()
+    if env.config.output_dir is None and agent.config.output_path:
+        env.config.output_dir = agent.config.output_path.with_suffix(".outputs")
     if output == DEFAULT_OUTPUT_FILE:
-        output_path = config["agent"]["output_path"]
+        output_path = agent.config.output_path
         agent.save(output_path)
         link = output_path.with_suffix(".link")
         link.symlink_to(output_path.name)
         link.replace(DEFAULT_OUTPUT_FILE)
     agent.run(run_task)
-    if (output_path := config.get("agent", {}).get("output_path")):
+    if output_path := agent.config.output_path:
         console.print(f"Saved trajectory to [bold green]'{output_path}'[/bold green]")
     return agent
 
@@ -183,8 +196,19 @@ def app(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args[:1] == ["setup"]:
         return setup.app(args[1:], prog=f"{prog or 'mini'} setup")
-    main(**vars(_build_parser(prog).parse_args(args)))
-    return 0
+    try:
+        agent = main(**vars(_build_parser(prog).parse_args(args)))
+    except KeyboardInterrupt:
+        return 130
+    status = agent.save(None)["info"]["exit_status"]
+    return {
+        "Submitted": 0,
+        "LimitsExceeded": 3,
+        "TimeExceeded": 3,
+        "ContextLimitExceeded": 3,
+        "RepeatedFormatError": 4,
+        "Interrupted": 130,
+    }.get(status, 1)
 
 
 if __name__ == "__main__":

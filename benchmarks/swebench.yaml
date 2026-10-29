@@ -23,7 +23,6 @@ agent:
 
     Do not perform any further work after the final action.
   step_limit: 100
-  wall_time_limit_seconds: 3600
 
 environment:
   cwd: /testbed

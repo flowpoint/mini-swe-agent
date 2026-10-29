@@ -62,7 +62,10 @@ def get_config_from_spec(config_spec: str | Path) -> dict:
     if isinstance(config_spec, str) and "=" in config_spec:
         return _key_value_spec_to_nested_dict(config_spec)
     path = get_config_path(config_spec)
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(config, dict):
+        raise ValueError(f"Config must be a mapping: {path}")
+    return config
 
 
 __all__ = [

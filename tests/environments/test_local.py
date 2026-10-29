@@ -18,7 +18,7 @@ def test_local_environment_config_defaults():
 
     assert config.cwd == ""
     assert config.env == {}
-    assert config.timeout == 30
+    assert config.timeout == 300
 
 
 def test_local_environment_basic_execution():

@@ -9,9 +9,14 @@ from minisweagent._vendor import yaml
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.models import get_model
 from minisweagent.models.actions_text import parse_regex_actions
-from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModelConfig, normalize_base_url
+from minisweagent.models.llamacpp_model import (
+    DEFAULT_CHECK_TIMEOUT,
+    LlamaCppModelConfig,
+    configure_session,
+    normalize_base_url,
+)
 from minisweagent.run import positive_float
-from minisweagent.utils.serialize import recursive_merge
+from minisweagent.utils.serialize import atomic_write, recursive_merge
 
 
 def _get_json(session: requests.Session, url: str, *, timeout: float, optional: bool = False, **kwargs) -> dict:
@@ -39,14 +44,16 @@ def _test_config(content: str, *, timeout: float) -> None:
                     {"role": "system", "content": config["agent"]["system_template"]},
                     {"role": "user", "content": "Reply only with one fenced bash block containing: echo setup-ok"},
                 ],
-                "stream": False,
+                "stream": True,
             },
-            timeout=timeout,
+            timeout=(timeout, model.config.request_timeout),
+            stream=True,
             allow_redirects=False,
         )
-        if response.status_code != 200:
-            raise SystemExit(f"mini setup: chat test failed: HTTP {response.status_code}")
-        text, finish_reason = model._assistant_content(response.json())
+        with response:
+            if response.status_code != 200:
+                raise SystemExit(f"mini setup: chat test failed: HTTP {response.status_code}")
+            text, finish_reason = model._assistant_content(model._read_response(response))
     if finish_reason == "length":
         raise SystemExit("mini setup: chat test response was truncated")
     actions = parse_regex_actions(
@@ -60,14 +67,19 @@ def _test_config(content: str, *, timeout: float) -> None:
 
 
 def main(
-    base_url: str, model: str | None = None, *, force: bool = False, check_timeout: float = DEFAULT_CHECK_TIMEOUT
+    base_url: str,
+    model: str | None = None,
+    *,
+    force: bool = False,
+    check_timeout: float = DEFAULT_CHECK_TIMEOUT,
+    request_timeout: float = 600,
+    api_key_env: str | None = None,
 ) -> None:
     path = get_user_config_path()
     if path.exists() and not force:
         raise SystemExit(f"mini setup: {path} already exists; use --force to replace it")
     base_url = normalize_base_url(base_url)
-    with requests.Session() as session:
-        session.trust_env = False
+    with configure_session(requests.Session(), api_key_env) as session:
         models = _get_json(session, f"{base_url}/models", timeout=check_timeout).get("data")
         if (
             not isinstance(models, list)
@@ -108,13 +120,21 @@ def main(
     content = Template(
         (builtin_config_dir / "setup.yaml.jinja").read_text(encoding="utf-8"), undefined=StrictUndefined
     ).render(
-        base_url=base_url, model=model, context=context, params=params, temperature=temperature, max_tokens=max_tokens
+        base_url=base_url,
+        model=model,
+        context=context,
+        params=params,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        request_timeout=request_timeout,
+        api_key_env=api_key_env,
     )
     _test_config(content, timeout=check_timeout)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content + "\n", encoding="utf-8")
+    atomic_write(path, content + "\n", overwrite=force)
     print(f"api: {base_url}")
     print(f"model: {json.dumps(model)}")
+    if api_key_env:
+        print(f"auth: ${api_key_env}")
     print(f"context: {context if context else 'not advertised'}")
     print(f"temperature: {temperature} ({'detected' if 'temperature' in params else 'client default'})")
     print(f"max_tokens: {max_tokens} (client reply limit)")
@@ -136,7 +156,16 @@ def app(argv: list[str] | None = None, *, prog: str = "mini setup") -> int:
         "--check-timeout",
         type=positive_float,
         default=DEFAULT_CHECK_TIMEOUT,
-        help="Timeout in seconds for each setup check (default: %(default)s)",
+        help="Discovery/connect timeout in seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--request-timeout",
+        type=positive_float,
+        default=600,
+        help="Generation inactivity timeout in seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--api-key-env", help="Environment variable containing the bearer token (only its name is saved)"
     )
     parser.add_argument("--force", action="store_true", help="Replace an existing config without prompting")
     main(**vars(parser.parse_args(argv)))

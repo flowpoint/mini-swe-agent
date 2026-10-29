@@ -8,8 +8,13 @@ model:
   model_class: llamacpp
   base_url: {{ base_url | tojson }}
   model_name: {{ model | tojson }}
-  # Startup and setup checks default to 3 seconds; override with --check-timeout SECONDS.
-  # request_timeout: 600  # Seconds to wait for a generated response.
+{% if api_key_env %}
+  api_key_env: {{ api_key_env | tojson }}  # Read the bearer token from this environment variable.
+{% else %}
+  # api_key_env: OPENAI_API_KEY  # Optional bearer token; only the variable name is saved.
+{% endif %}
+  # Discovery/startup checks default to 3 seconds; override with --check-timeout SECONDS.
+  request_timeout: {{ request_timeout | tojson }}  # Seconds without response data; null disables. No total generation deadline.
   # connect_timeout: 10   # Seconds to establish the HTTP connection.
   model_kwargs:
     # Server temperature when advertised; otherwise the deterministic client default.
@@ -29,8 +34,11 @@ model:
 #   confirm_exit: true  # Ask for another task when the model finishes.
 #   code_theme: ansi_dark  # Code colors: ansi_dark, ansi_light, or a Pygments theme name.
 #   step_limit: 100  # Maximum model calls per run; 0 disables this limit.
-#   wall_time_limit_seconds: 3600  # Maximum run duration; 0 disables this limit.
+#   max_context_chars: 65536  # Text budget, not tokens; retain task, corrections and recent turns. Override compact() to customize.
 #   max_consecutive_format_errors: 3  # Stop after repeated malformed Bash actions.
 
 # environment:  # Commands run where mini runs; start mini inside your container for isolation.
 #   cwd: /path/to/project  # Working directory for shell commands; defaults to the current directory.
+#   timeout: 300  # Seconds without output or process-group CPU/I/O activity; null disables.
+#   max_output_bytes: 16384  # Head/tail excerpt for the model; full logs are kept beside the trajectory.
+#   output_dir: /path/to/logs  # Override the command-log directory.

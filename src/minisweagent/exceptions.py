@@ -11,7 +11,11 @@ class Submitted(InterruptAgentFlow):
 
 
 class LimitsExceeded(InterruptAgentFlow):
-    """Raised when the agent has exceeded its cost or step limit."""
+    """Raised when the agent has reached its step limit."""
+
+
+class ContextLimitExceeded(InterruptAgentFlow):
+    """Essential context cannot fit within the configured text budget."""
 
 
 class TimeExceeded(LimitsExceeded):

@@ -7,6 +7,7 @@ import logging
 import math
 import time
 import traceback
+from collections import Counter
 from importlib import import_module
 from pathlib import Path
 
@@ -14,11 +15,18 @@ from jinja2 import StrictUndefined, Template
 from pydantic import BaseModel, Field, field_serializer
 
 from minisweagent import Environment, Model, __version__
-from minisweagent.exceptions import FormatError, InterruptAgentFlow, LimitsExceeded, TimeExceeded, UserInterruption
-from minisweagent.utils.serialize import recursive_merge
+from minisweagent.exceptions import (
+    ContextLimitExceeded,
+    FormatError,
+    InterruptAgentFlow,
+    LimitsExceeded,
+    TimeExceeded,
+    UserInterruption,
+)
+from minisweagent.utils.serialize import atomic_write, recursive_merge
 
 
-class AgentConfig(BaseModel):
+class AgentConfig(BaseModel, extra="forbid"):
     """Check the config files in minisweagent/config for example settings."""
 
     system_template: str
@@ -27,8 +35,8 @@ class AgentConfig(BaseModel):
     """Template for the first user message specifying the task (the second message overall)."""
     step_limit: int = 0
     """Maximum number of steps the agent can take."""
-    cost_limit: float = 0.0
-    """Stop agent after exceeding (!) this cost."""
+    max_context_chars: int = Field(default=65536, gt=0)
+    """Bound model-visible text; the full trajectory remains saved. Override compact() to customize."""
     wall_time_limit_seconds: int = 0
     """Stop agent after this many seconds of wall-clock time. 0 means no limit."""
     max_consecutive_format_errors: int = 3
@@ -52,7 +60,6 @@ class DefaultAgent:
         self.env = env
         self.extra_template_vars = {}
         self.logger = logging.getLogger("agent")
-        self.cost = 0.0
         self.n_calls = 0
         self.n_consecutive_format_errors = 0
         self._start_time = time.time()
@@ -64,7 +71,6 @@ class DefaultAgent:
             self.model.get_template_vars(),
             {
                 "n_model_calls": self.n_calls,
-                "model_cost": self.cost,
                 "elapsed_seconds": int(time.time() - self._start_time),
             },
             self.extra_template_vars,
@@ -106,8 +112,6 @@ class DefaultAgent:
                 self.step()
                 self.n_consecutive_format_errors = 0  # reset on any clean step
             except FormatError as e:
-                # The call was billed before parsing failed, so query() never got to charge it.
-                self.cost += e.messages[0].get("extra", {}).get("cost", 0.0)
                 self.n_consecutive_format_errors += 1
                 if 0 < self.config.max_consecutive_format_errors <= self.n_consecutive_format_errors:
                     self.add_messages(
@@ -122,6 +126,9 @@ class DefaultAgent:
                     self.add_messages(*e.messages)
             except InterruptAgentFlow as e:
                 self.add_messages(*e.messages)
+            except KeyboardInterrupt:
+                self.add_messages({"role": "exit", "content": "Interrupted", "extra": {"exit_status": "Interrupted"}})
+                raise
             except Exception as e:
                 self.handle_uncaught_exception(e)
                 raise
@@ -137,7 +144,7 @@ class DefaultAgent:
 
     def query(self) -> dict:
         """Query the model and return model messages. Override to add hooks."""
-        if 0 < self.config.step_limit <= self.n_calls or 0 < self.config.cost_limit <= self.cost:
+        if 0 < self.config.step_limit <= self.n_calls:
             raise LimitsExceeded(
                 {
                     "role": "exit",
@@ -153,11 +160,48 @@ class DefaultAgent:
                     "extra": {"exit_status": "TimeExceeded", "submission": ""},
                 }
             )
+        messages = self.compact(self.messages)
         self.n_calls += 1
-        message = self.model.query(self.messages)
-        self.cost += message.get("extra", {}).get("cost", 0.0)
+        message = self.model.query(messages)
         self.add_messages(message)
         return message
+
+    def compact(self, messages: list[dict]) -> list[dict]:
+        """Keep the task, user corrections and recent complete turns; never edit history."""
+        if sum(len(m["content"]) for m in messages) <= self.config.max_context_chars:
+            return messages
+        notice = {
+            "role": "user",
+            "content": "[Older turns omitted from context; full history remains in the trajectory.]",
+        }
+        groups = [messages[:2]]
+        for message in messages[2:]:
+            if len(groups) == 1 or message["role"] == "assistant" or message.get("extra", {}).get("interrupt_type"):
+                groups.append([])
+            groups[-1].append(message)
+        keep = {0, len(groups) - 1} | {
+            i
+            for i, group in enumerate(groups)
+            if any(m.get("extra", {}).get("interrupt_type", "").startswith("User") for m in group)
+        }
+        sizes = [sum(len(m["content"]) for m in group) for group in groups]
+        remaining = self.config.max_context_chars - len(notice["content"]) - sum(sizes[i] for i in keep)
+        if remaining < 0:
+            raise ContextLimitExceeded(
+                {
+                    "role": "exit",
+                    "content": "Task, corrections and latest turn exceed max_context_chars; increase it or override compact().",
+                    "extra": {"exit_status": "ContextLimitExceeded", "submission": ""},
+                }
+            )
+        for i in reversed(range(1, len(groups))):
+            if i in keep:
+                continue
+            if sizes[i] > remaining:
+                break
+            keep.add(i)
+            remaining -= sizes[i]
+        return groups[0] + [notice] + [m for i in sorted(keep - {0}) for m in groups[i]]
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
@@ -166,7 +210,9 @@ class DefaultAgent:
             for action in message.get("extra", {}).get("actions", []):
                 outputs.append(self.execute_action(action))
         finally:
-            result = self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+            result = self.add_messages(
+                *self.model.format_observation_messages(message, outputs, self.get_template_vars())
+            )
         return result
 
     def execute_action(self, action: dict) -> dict:
@@ -184,21 +230,34 @@ class DefaultAgent:
             time.sleep(self.config.audit_timeout)
 
     def confirm_action(self, action: dict) -> None:
-        reason = import_module("minisweagent.agents.prompt_user")._multiline_prompt(
-            "Submit an empty message to continue, or explain why this command should not run:\n> "
-        ).strip()
+        reason = (
+            import_module("minisweagent.agents.prompt_user")
+            ._multiline_prompt("Submit an empty message to continue, or explain why this command should not run:\n> ")
+            .strip()
+        )
         if reason:
-            raise UserInterruption({"role": "user", "content": f"Command not executed: {reason}"})
+            raise UserInterruption(
+                {
+                    "role": "user",
+                    "content": f"Command not executed: {reason}",
+                    "extra": {"interrupt_type": "UserRejection"},
+                }
+            )
 
     def serialize(self, *extra_dicts) -> dict:
         """Serialize agent state to a json-compatible nested dictionary for saving."""
         last_message = self.messages[-1] if self.messages else {}
         last_extra = last_message.get("extra", {})
+        usage = Counter()
+        for message in self.messages:
+            if isinstance(reported := message.get("extra", {}).get("usage"), dict):
+                usage.update({k: v for k, v in reported.items() if type(v) is int})
         agent_data = {
             "info": {
                 "model_stats": {
-                    "instance_cost": self.cost,
                     "api_calls": self.n_calls,
+                    "elapsed_seconds": int(time.time() - self._start_time),
+                    "usage": dict(usage),
                 },
                 "config": {
                     "agent": self.config.model_dump(mode="json"),
@@ -219,6 +278,5 @@ class DefaultAgent:
         """
         data = self.serialize(*extra_dicts)
         if path:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2))
+            atomic_write(path, json.dumps(data, indent=2))
         return data

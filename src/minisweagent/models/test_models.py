@@ -4,22 +4,20 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from minisweagent.models import GLOBAL_MODEL_STATS
 from minisweagent.models.actions_text import format_observation_messages
 
 
-def make_output(content: str, actions: list[dict], cost: float = 1.0) -> dict:
+def make_output(content: str, actions: list[dict]) -> dict:
     """Helper to create an output dict for DeterministicModel.
 
     Args:
         content: The response content string
         actions: List of action dicts, e.g., [{"command": "echo hello"}]
-        cost: Cost to report for this output (default 1.0)
     """
     return {
         "role": "assistant",
         "content": content,
-        "extra": {"actions": actions, "cost": cost, "timestamp": time.time()},
+        "extra": {"actions": actions, "timestamp": time.time()},
     }
 
 
@@ -38,11 +36,10 @@ def _process_test_actions(actions: list[dict]) -> bool:
     return False
 
 
-class DeterministicModelConfig(BaseModel):
+class DeterministicModelConfig(BaseModel, extra="forbid"):
     outputs: list[dict]
     """List of exact output messages to return in sequence."""
     model_name: str = "deterministic"
-    cost_per_call: float = 1.0
     observation_template: str = (
         "{% if output.exception_info %}<exception>{{output.exception_info}}</exception>\n{% endif %}"
         "<returncode>{{output.returncode}}</returncode>\n<output>\n{{output.output}}</output>"
@@ -61,7 +58,6 @@ class DeterministicModel:
         output = self.config.outputs[self.current_index]
         if _process_test_actions(output.get("extra", {}).get("actions", [])):
             return self.query(messages, **kwargs)
-        GLOBAL_MODEL_STATS.add(self.config.cost_per_call)
         return output
 
     def format_message(self, **kwargs) -> dict:

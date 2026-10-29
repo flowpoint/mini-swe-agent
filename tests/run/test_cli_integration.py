@@ -27,10 +27,11 @@ def test_main_starts_without_setup_wizard():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test"}, "environment": {}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -59,10 +60,15 @@ def test_mini_command_calls_run_interactive():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": float("inf")}, "env": {}, "model": {}}
+        mock_get_config.return_value = {
+            "agent": {"system_template": "test", "audit_timeout": float("inf")},
+            "environment": {},
+            "model": {},
+        }
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -98,10 +104,15 @@ def test_mini_calls_prompt_when_no_task_provided():
         mock_prompt.return_value = "User provided task"
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test", "audit_timeout": float("inf")}, "env": {}, "model": {}}
+        mock_get_config.return_value = {
+            "agent": {"system_template": "test", "audit_timeout": float("inf")},
+            "environment": {},
+            "model": {},
+        }
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -137,12 +148,13 @@ def test_mini_with_explicit_model():
         mock_get_model.return_value = mock_model
         mock_get_config.return_value = {
             "agent": {"system_template": "test", "audit_timeout": 0},
-            "env": {},
+            "environment": {},
             "model": {"default_config": "test"},
         }
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -180,6 +192,7 @@ def test_zero_audit_timeout_overrides_config():
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -215,6 +228,7 @@ def test_missing_audit_override_preserves_config():
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
 
@@ -234,32 +248,6 @@ def test_missing_audit_override_preserves_config():
         assert args[2].get("audit_timeout") == 1.25
         # Verify agent.run was called
         mock_agent.run.assert_called_once_with("Test confirm task")
-
-
-def test_cost_limit_zero_is_preserved():
-    """Test that an explicit cost_limit=0 is not dropped during config merge."""
-    with (
-        patch("minisweagent.run.mini.get_agent") as mock_get_agent,
-        patch("minisweagent.run.mini.get_model") as mock_get_model,
-        patch("minisweagent.run.mini.get_config_from_spec") as mock_get_config,
-    ):
-        mock_get_model.return_value = Mock()
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
-        mock_agent = Mock()
-        mock_get_agent.return_value = mock_agent
-
-        main(
-            config_spec=[str(DEFAULT_CONFIG_FILE)],
-            model_name="test-model",
-            task="Test cost limit task",
-            audit_timeout=None,
-            cost_limit=0,
-            output=None,
-            model_class=None,
-            agent_class=None,
-        )
-
-        assert mock_get_agent.call_args.args[2]["cost_limit"] == 0
 
 
 def test_mini_help():
@@ -419,10 +407,11 @@ def test_exit_immediately_flag_sets_confirm_exit_false():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test"}, "environment": {}, "model": {}}
 
         # Create mock agent with config
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.config.confirm_exit = False
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
@@ -453,10 +442,11 @@ def test_no_exit_immediately_flag_sets_confirm_exit_true():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test"}, "environment": {}, "model": {}}
 
         # Create mock agent with config
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.config.confirm_exit = True
         mock_agent.run.return_value = {"exit_status": "Success", "submission": "Result"}
         mock_get_agent.return_value = mock_agent
@@ -486,22 +476,34 @@ def test_exit_immediately_flag_with_cli_adapter():
         # Setup mocks
         mock_model = Mock()
         mock_get_model.return_value = mock_model
-        mock_get_config.return_value = {"agent": {"system_template": "test"}, "env": {}, "model": {}}
+        mock_get_config.return_value = {"agent": {"system_template": "test"}, "environment": {}, "model": {}}
 
         # Setup mock agent instance
         mock_agent = Mock()
+        mock_agent.config.output_path = None
         mock_agent.run.return_value = {"exit_status": "Success", "result": "Result"}
         mock_agent.messages = []
+        mock_agent.save.return_value = {"info": {"exit_status": "Submitted"}}
         mock_get_agent.return_value = mock_agent
 
-        assert app(
-            ["--task", "Test task", "--exit-immediately", "--model", "test-model", "--config", str(DEFAULT_CONFIG_FILE)]
-        ) == 0
+        assert (
+            app(
+                [
+                    "--task",
+                    "Test task",
+                    "--exit-immediately",
+                    "--model",
+                    "test-model",
+                    "--config",
+                    str(DEFAULT_CONFIG_FILE),
+                ]
+            )
+            == 0
+        )
 
         mock_get_agent.assert_called_once()
         args, kwargs = mock_get_agent.call_args
-        # The config (third positional arg) should contain confirm_exit
-        assert args[2].get("confirm_exit") is False
+        assert mock_agent.config.confirm_exit is False
 
 
 def test_output_file_is_created(tmp_path):
@@ -540,16 +542,19 @@ def test_output_file_is_created(tmp_path):
         mock_model.format_observation_messages.return_value = []
         mock_get_model.return_value = mock_model
 
-        assert app(
-            [
-                "--task",
-                "Test task",
-                "--model",
-                "test-model",
-                "--output",
-                str(output_file),
-                "--config",
-                str(config_file),
-            ],
-        ) == 0
+        assert (
+            app(
+                [
+                    "--task",
+                    "Test task",
+                    "--model",
+                    "test-model",
+                    "--output",
+                    str(output_file),
+                    "--config",
+                    str(config_file),
+                ],
+            )
+            == 0
+        )
         assert output_file.exists(), f"Output file {output_file} was not created"

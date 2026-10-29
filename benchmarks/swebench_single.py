@@ -46,7 +46,6 @@ def main(
     model_class: str | None = None,
     agent_class: str | None = None,
     audit_timeout: float | None = None,
-    cost_limit: float | None = None,
     config_spec: list[str] | None = None,
     exit_immediately: bool = False,
     output: Path | None = DEFAULT_OUTPUT_FILE,
@@ -72,19 +71,19 @@ def main(
 
     logger.info(f"Building agent config from specs: {config_spec}")
     configs = [get_config_from_spec(spec) for spec in config_spec]
-    configs.append({
-        "agent": {
-            "agent_class": agent_class or UNSET,
-            "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
-            "cost_limit": cost_limit if cost_limit is not None else UNSET,
-            "confirm_exit": False if exit_immediately else UNSET,
-            "output_path": output or UNSET,
-        },
-        "model": {
-            "model_class": model_class or UNSET,
-            "model_name": model_name or UNSET,
-        },
-    })
+    configs.append(
+        {
+            "agent": {
+                "agent_class": agent_class or UNSET,
+                "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
+                "output_path": output or UNSET,
+            },
+            "model": {
+                "model_class": model_class or UNSET,
+                "model_name": model_name or UNSET,
+            },
+        }
+    )
     config = recursive_merge(*configs)
 
     env = get_sb_environment(config, instance)
@@ -94,6 +93,8 @@ def main(
         config.get("agent", {}),
         default_type="interactive",
     )
+    if exit_immediately and hasattr(agent.config, "confirm_exit"):
+        agent.config.confirm_exit = False
     agent.run(instance["problem_statement"])
 
 
@@ -108,8 +109,11 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--agent-class",
         help="Agent class to use (e.g., 'interactive' or 'minisweagent.agents.interactive.InteractiveAgent')",
     )
-    parser.add_argument("--audit-timeout", type=nonnegative_float, help="Audit seconds per command (default: 0; inf waits for continuation)")
-    parser.add_argument("-l", "--cost-limit", type=float, help="Cost limit. Set to 0 to disable.")
+    parser.add_argument(
+        "--audit-timeout",
+        type=nonnegative_float,
+        help="Audit seconds per command (default: 0; inf waits for continuation)",
+    )
     parser.add_argument("-c", "--config", dest="config_spec", action="append", help=_CONFIG_SPEC_HELP_TEXT)
     parser.add_argument(
         "--exit-immediately",

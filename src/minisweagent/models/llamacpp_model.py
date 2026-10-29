@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -7,7 +9,6 @@ import requests
 from pydantic import BaseModel, Field
 
 from minisweagent.exceptions import FormatError
-from minisweagent.models import GLOBAL_MODEL_STATS
 from minisweagent.models.actions_text import format_observation_messages, parse_regex_actions
 
 logger = logging.getLogger("llamacpp_model")
@@ -42,11 +43,26 @@ class LlamaCppProtocolError(LlamaCppError):
     """The llama.cpp server returned a malformed successful response."""
 
 
-class LlamaCppModelConfig(BaseModel):
+def configure_session(session: requests.Session, api_key_env: str | None = None) -> requests.Session:
+    """Use only explicitly configured credentials; serialize the variable name, never its value."""
+    session.trust_env = False
+    if api_key_env is not None:
+        token = os.environ.get(api_key_env, "")
+        if not token or not token.isascii() or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in token):
+            raise ValueError(
+                f"api_key_env {api_key_env!r} must name a nonempty environment variable containing a token"
+            )
+        session.headers["Authorization"] = f"Bearer {token}"
+    return session
+
+
+class LlamaCppModelConfig(BaseModel, extra="forbid"):
     model_name: str = "local"
     base_url: str = Field(default="http://127.0.0.1:8080/v1", min_length=1)
-    request_timeout: float = Field(default=600, gt=0, allow_inf_nan=False)
+    request_timeout: float | None = Field(default=600, gt=0, allow_inf_nan=False)
+    """Seconds without response bytes; null permits unlimited silence."""
     connect_timeout: float | None = Field(default=10, gt=0, allow_inf_nan=False)
+    api_key_env: str | None = Field(default=None, min_length=1)
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
     action_regex: str = r"```bash\s*\n(.*?)\n```"
     format_error_template: str = (
@@ -61,15 +77,12 @@ class LlamaCppModelConfig(BaseModel):
 class LlamaCppModel:
     def __init__(self, *, session: requests.Session | None = None, **kwargs):
         self.config = LlamaCppModelConfig(**kwargs)
-        self.session = session or requests.Session()
-        # Never inherit proxy settings or credentials from the environment. This
-        # adapter communicates only with the explicitly configured server.
-        self.session.trust_env = False
+        self.session = configure_session(session or requests.Session(), self.config.api_key_env)
         self._api_url = f"{normalize_base_url(self.config.base_url)}/chat/completions"
 
     @property
-    def _timeout(self) -> tuple[float, float]:
-        return (self.config.connect_timeout or self.config.request_timeout, self.config.request_timeout)
+    def _timeout(self) -> tuple[float | None, float | None]:
+        return (self.config.connect_timeout, self.config.request_timeout)
 
     @staticmethod
     def _response_detail(response: requests.Response) -> str:
@@ -108,6 +121,7 @@ class LlamaCppModel:
                     self._api_url,
                     json=payload,
                     timeout=self._timeout,
+                    stream=True,
                     # Never forward prompts to a redirect target.
                     allow_redirects=False,
                 )
@@ -129,7 +143,9 @@ class LlamaCppModel:
 
             if response.status_code in _RETRY_STATUS_CODES:
                 if attempt == _MAX_ATTEMPTS:
-                    raise self._http_error(response)
+                    with response:
+                        raise self._http_error(response)
+                response.close()
                 logger.warning(
                     "Transient llama.cpp HTTP %d, retrying attempt %d/%d",
                     response.status_code,
@@ -139,9 +155,55 @@ class LlamaCppModel:
                 time.sleep(2 ** (attempt - 1))
                 continue
             if not 200 <= response.status_code < 300:
-                raise self._http_error(response)
+                with response:
+                    raise self._http_error(response)
             return response
         raise AssertionError("unreachable")
+
+    @staticmethod
+    def _read_response(response: requests.Response) -> dict:
+        """Collect SSE deltas; socket read timeouts measure silence, not total generation time."""
+        if "text/event-stream" not in response.headers.get("Content-Type", ""):
+            try:
+                return response.json()
+            except ValueError as e:
+                raise LlamaCppProtocolError("llama.cpp returned invalid JSON") from e
+        response.encoding = "utf-8"
+        result, parts, event = {}, [], []
+        role, finish_reason = "assistant", None
+        for line in response.iter_lines(decode_unicode=True):
+            if line.startswith("data:"):
+                event.append(line[5:].lstrip())
+            elif not line and event:
+                data, event = "\n".join(event), []
+                if data == "[DONE]":
+                    if not isinstance(finish_reason, str):
+                        raise LlamaCppProtocolError("Stream ended without a finish reason")
+                    result["choices"] = [
+                        {"message": {"role": role, "content": "".join(parts)}, "finish_reason": finish_reason}
+                    ]
+                    return result
+                try:
+                    chunk = json.loads(data)
+                except ValueError as e:
+                    raise LlamaCppProtocolError("Invalid JSON in chat completion stream") from e
+                if not isinstance(chunk, dict) or "error" in chunk or not isinstance(chunk.get("choices"), list):
+                    raise LlamaCppProtocolError("Invalid chat completion stream event")
+                result.update({k: v for k, v in chunk.items() if k != "choices"})
+                for choice in chunk["choices"]:
+                    if not isinstance(choice, dict) or not isinstance(choice.get("delta", {}), dict):
+                        raise LlamaCppProtocolError("Invalid stream choice/delta")
+                    if choice.get("index", 0) != 0:
+                        continue
+                    delta = choice.get("delta", {})
+                    role = delta.get("role", role)
+                    content = delta.get("content")
+                    if content is not None:
+                        if not isinstance(content, str):
+                            raise LlamaCppProtocolError("Stream delta content must be text")
+                        parts.append(content)
+                    finish_reason = choice.get("finish_reason") or finish_reason
+        raise LlamaCppProtocolError("Chat completion stream ended prematurely")
 
     def _prepare_messages_for_api(self, messages: list[dict]) -> list[dict[str, str]]:
         prepared = []
@@ -179,25 +241,18 @@ class LlamaCppModel:
             | {
                 "model": self.config.model_name,
                 "messages": self._prepare_messages_for_api(messages),
-                "stream": False,
+                "stream": True,
             }
         )
-        response = self._request(payload)
-        try:
-            response_json = response.json()
-        except ValueError as e:
-            raise LlamaCppProtocolError(
-                f"llama.cpp returned invalid JSON with HTTP {response.status_code}: {self._response_detail(response)}"
-            ) from e
+        with self._request(payload) as response:
+            response_json = self._read_response(response)
         content, finish_reason = self._assistant_content(response_json)
         extra = {
             "response": response_json,
             "usage": response_json.get("usage", {}),
             "timings": response_json.get("timings", {}),
-            "cost": 0.0,
             "timestamp": time.time(),
         }
-        GLOBAL_MODEL_STATS.add(0.0)
         try:
             actions = parse_regex_actions(
                 content,

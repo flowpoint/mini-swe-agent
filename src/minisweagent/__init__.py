@@ -23,6 +23,9 @@ _config_home = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
 global_config_dir = Path(os.getenv("MSWEA_GLOBAL_CONFIG_DIR") or _config_home / "mini-swe-agent")
 global_config_dir.mkdir(parents=True, exist_ok=True)
 
+_data_home = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local/share")
+global_data_dir = (_data_home if _data_home.is_absolute() else Path.home() / ".local/share") / "mini-swe-agent"
+
 # === Protocols ===
 # You can ignore them unless you want static type checking.
 

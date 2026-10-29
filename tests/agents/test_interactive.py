@@ -52,10 +52,12 @@ def model_factory(default_config):
 
 def test_default_yolo_executes_without_confirmation(tmp_path: Path):
     agent = InteractiveAgent(
-        model=make_text_model([
-            ("Write", [{"command": "printf executed > result.txt"}]),
-            ("Finish", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
-        ]),
+        model=make_text_model(
+            [
+                ("Write", [{"command": "printf executed > result.txt"}]),
+                ("Finish", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
+            ]
+        ),
         env=LocalEnvironment(cwd=str(tmp_path)),
         system_template="Test agent",
         instance_template="{{task}}",
@@ -763,20 +765,18 @@ def test_limits_exceeded_with_user_continuation(model_factory):
                     ],
                 ),
             ],
-            cost_per_call=0.6,  # Will exceed cost_limit=0.5 on first call
         ),
         env=LocalEnvironment(),
         **{
             **config,
-            "step_limit": 10,  # High enough to not interfere initially
-            "cost_limit": 0.5,  # Will be exceeded with first model call (cost=0.6),
+            "step_limit": 1,
             "audit_timeout": 0,  # Use yolo mode to avoid confirmation prompts,
         },
     )
 
     # Provide new limits and an empty submission at the shared prompt.
     with patch.object(InteractiveAgent, "_stdin_is_interactive", return_value=True):
-        with mock_prompts(["10", "5.0", ""]):
+        with mock_prompts(["10", ""]):
             with patch("minisweagent.agents.interactive.console.print"):
                 info = agent.run("Test limits exceeded with continuation")
 
@@ -784,7 +784,6 @@ def test_limits_exceeded_with_user_continuation(model_factory):
     assert info["submission"] == "completed after limit increase\n"
     assert agent.n_calls == 3  # Should complete all 3 steps
     assert agent.config.step_limit == 10  # Should have updated step limit
-    assert agent.config.cost_limit == 5.0  # Should have updated cost limit
 
 
 def test_limits_exceeded_multiple_times_with_continuation(model_factory):
@@ -806,13 +805,11 @@ def test_limits_exceeded_multiple_times_with_continuation(model_factory):
                     ],
                 ),
             ],
-            cost_per_call=1.0,  # Standard cost per call
         ),
         env=LocalEnvironment(),
         **{
             **config,
             "step_limit": 1,  # Will be exceeded after first step
-            "cost_limit": 100.0,  # High enough to not interfere,
             "audit_timeout": 0,
         },
     )
@@ -820,7 +817,7 @@ def test_limits_exceeded_multiple_times_with_continuation(model_factory):
     # Provide new limits multiple times at the shared prompt.
     # First limit increase: step_limit=2, then step_limit=10 when exceeded again
     with patch.object(InteractiveAgent, "_stdin_is_interactive", return_value=True):
-        with mock_prompts(["2", "100.0", "10", "100.0", ""]):
+        with mock_prompts(["2", "10", ""]):
             with patch("minisweagent.agents.interactive.console.print"):
                 info = agent.run("Test multiple limit increases")
 
@@ -838,13 +835,11 @@ def test_limits_exceeded_non_interactive_stops_cleanly(model_factory):
     agent = InteractiveAgent(
         model=factory(
             [("Step 1", [{"command": "echo 'first step'"}])],
-            cost_per_call=0.6,  # exceeds cost_limit after the first call
         ),
         env=LocalEnvironment(),
         **{
             **config,
-            "step_limit": 10,
-            "cost_limit": 0.5,
+            "step_limit": 1,
             "audit_timeout": 0,
         },
     )
@@ -858,14 +853,14 @@ def test_limits_exceeded_non_interactive_stops_cleanly(model_factory):
 
 
 def test_time_exceeded_never_prompts(model_factory):
-    """A wall-clock limit can't be lifted by raising step/cost limits, so it must
+    """A wall-clock limit can't be lifted by raising step limits, so it must
     always stop cleanly -- even with an interactive terminal -- rather than prompt
     (which would otherwise loop forever)."""
     factory, config = model_factory
     agent = InteractiveAgent(
         model=factory([("Step 1", [{"command": "echo 'first step'"}])]),
         env=LocalEnvironment(),
-        **{**config, "step_limit": 10, "cost_limit": 100.0, "wall_time_limit_seconds": 1, "audit_timeout": 0},
+        **{**config, "step_limit": 10, "wall_time_limit_seconds": 1, "audit_timeout": 0},
     )
     agent._start_time = 0  # force the wall-clock budget to be already exhausted
 

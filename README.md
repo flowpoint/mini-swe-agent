@@ -1,12 +1,12 @@
 # mini-SWE-agent: local llama.cpp fork
 
-mini-SWE-agent is a small software-engineering agent for Linux. This fork talks directly to one local [llama.cpp](https://github.com/ggml-org/llama.cpp) server through its OpenAI-compatible Chat Completions endpoint. It does not use LiteLLM, the OpenAI Python SDK, cloud-provider routing, or telemetry.
+mini-SWE-agent is a small software-engineering agent for Linux. This fork primarily targets a local [llama.cpp](https://github.com/ggml-org/llama.cpp) server through its OpenAI-compatible Chat Completions endpoint. Compatible hosted endpoints can use bearer-token authentication. It does not use LiteLLM, the OpenAI Python SDK, cloud-provider routing, or telemetry.
 
 ## Supported runtime
 
 - Linux and Python 3.11 or newer
-- Synchronous, non-streaming, text-only chat completions
-- A single local `llama-server`
+- Synchronous, text-only chat completions collected from a stream
+- A single configured endpoint, normally a local `llama-server`
 - Commands emitted as exactly one fenced `bash` block
 - The existing local shell environment
 - Deterministic generation when `temperature: 0`
@@ -44,7 +44,7 @@ The default client URL is `http://127.0.0.1:8080/v1`, so requests are sent to `/
 
 ## Run the agent
 
-From the repository you want to modify:
+Create a tested config with `mini setup` (default: localhost:8080, alphabetically first advertised model). Setup fails without writing if discovery or the chat test fails. For a hosted endpoint, use `mini setup --base-url URL --api-key-env OPENAI_API_KEY` with the token in that environment variable. From the repository you want to modify:
 
 ```bash
 mini --task "Fix the failing tests and explain the change"
@@ -56,18 +56,18 @@ The audit timeout controls each command: `0` runs immediately (the default), a p
 mini --audit-timeout 3 --task "Add regression coverage for the parser"
 ```
 
-The agent executes real shell commands with your current user's permissions. Review commands carefully and use an isolated working tree for untrusted tasks.
+The agent executes real shell commands with your current user's permissions. Trajectories are saved atomically to unique files under `$XDG_DATA_HOME/mini-swe-agent/trajectories` (default `~/.local/share`); `latest.traj.json` points to the latest run. Full command logs live in a directory beside each trajectory, with bounded head/tail excerpts passed to the model. Exit codes are 0 for submission, 1 for errors, 2 for invalid CLI arguments, 3 for limits, 4 for repeated malformed actions, and 130 for an unhandled interruption.
 
 ## Configuration
 
-The packaged `mini.yaml` selects `model_class: llamacpp` and uses deterministic defaults:
+Missing configs and unknown settings fail before launch. The default user config is `$XDG_CONFIG_HOME/mini-swe-agent/mini.yaml` (default `~/.config`). The packaged `mini.yaml` selects `model_class: llamacpp` and uses deterministic defaults:
 
 ~~~~yaml
 model:
   model_class: llamacpp
   model_name: local
   base_url: http://127.0.0.1:8080/v1
-  request_timeout: 600
+  request_timeout: 600  # Inactivity between response bytes; null disables.
   connect_timeout: 10
   model_kwargs:
     temperature: 0
@@ -76,8 +76,14 @@ model:
 
 agent:
   step_limit: 100
-  wall_time_limit_seconds: 3600
+  max_context_chars: 65536
+
+environment:
+  timeout: 300  # Inactivity: output or process-group CPU/I/O; null disables.
+  max_output_bytes: 16384
 ~~~~
+
+Startup discovery uses a separate 3-second timeout, configurable with `--check-timeout`. Generation has no total deadline; setup's `--request-timeout` sets the generation inactivity timeout. Command liveness counts Linux process-group CPU ticks, I/O counters, and log growth. The bundled config has no elapsed-time limit. Context compaction keeps the task, user corrections, and recent complete turns without changing saved history; override `DefaultAgent.compact(messages)` to customize it. `max_context_chars` bounds text, not tokens: tune it to the model's context window. Cost settings and global cost/call counters have been removed; trajectories retain per-run call counts, elapsed seconds, and reported token usage.
 
 Assistant responses render as Markdown with highlighted code on terminals; piped output retains the original text. Set `agent.code_theme` to `ansi_light` for light terminals or another Pygments theme. `NO_COLOR` disables colors. Load a full custom configuration with `mini -c /path/to/config.yaml -t "..."`, or merge overrides onto the packaged base:
 
@@ -99,7 +105,7 @@ Docker must be available for benchmark execution. To override benchmark settings
 
 ## Limitations
 
-This fork has no streaming, multimodal input, native function calling, provider fallback, automatic model discovery, or monetary cost calculation. It supports Chat Completions only, reports cost as `0.0`, and does not target Windows or macOS. Server lifecycle, model loading, context sizing, and chat-template selection remain llama.cpp responsibilities.
+This fork supports Chat Completions only, without multimodal input, native function calling, provider fallback, or monetary cost calculation. Responses are displayed after the stream completes. Remote liveness is observable only through response data; silent prefill needs a sufficiently generous `request_timeout`. Server lifecycle, model loading, context sizing, and chat-template selection remain server responsibilities. The CLI targets Linux.
 
 ## License and upstream
 

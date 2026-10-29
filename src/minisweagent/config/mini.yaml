@@ -19,7 +19,6 @@ agent:
     {{system}} {{release}} {{version}} {{machine}}
     </system_information>
   step_limit: 100
-  wall_time_limit_seconds: 3600
   audit_timeout: 0
 
 environment:

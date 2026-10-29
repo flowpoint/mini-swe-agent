@@ -74,7 +74,8 @@ main(task="failed", config_spec=[sys.argv[1], "model.outputs=[]"])
     assert (directory / "latest.traj.json").readlink() == Path(histories["failed"].name)
     assert (directory / "latest.traj.json").resolve() == histories["failed"]
     assert not list((tmp_path / "config").glob("*.traj.json"))
-    assert len(list(directory.iterdir())) == 4
+    assert len(list(directory.glob("*.traj.json"))) == 4
+    assert len(list(directory.glob("*.outputs/command-*.log"))) == 2
 
 
 def test_concurrent_runs_have_distinct_files(tmp_path: Path, history_config: Path):
@@ -105,7 +106,8 @@ app(["-c", sys.argv[1], "-t", sys.argv[2]])
         "four",
     }
     assert (directory / "latest.traj.json").resolve() in paths
-    assert len(list(directory.iterdir())) == 5
+    assert len(list(directory.glob("*.traj.json"))) == 5
+    assert len(list(directory.glob("*.outputs/command-*.log"))) == 4
 
 
 def test_explicit_output_and_disabled_saving(tmp_path: Path, history_config: Path):
@@ -122,7 +124,9 @@ main(task="unsaved", config_spec=[sys.argv[1]], output=None)
     )
     assert result.returncode == 0, result.stderr
     assert json.loads((tmp_path / "custom.traj.json").read_text())["messages"][1]["content"] == "custom"
-    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "data/mini-swe-agent/trajectories").exists()
+    assert len(list((tmp_path / "data/mini-swe-agent/outputs").glob("command-*.log"))) == 1
+    assert len(list((tmp_path / "custom.traj.outputs").glob("command-*.log"))) == 1
 
 
 @pytest.mark.parametrize(

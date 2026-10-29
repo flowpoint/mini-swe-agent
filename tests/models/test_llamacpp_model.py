@@ -6,7 +6,6 @@ import pytest
 import requests
 
 from minisweagent.exceptions import FormatError
-from minisweagent.models import GLOBAL_MODEL_STATS
 from minisweagent.models.llamacpp_model import LlamaCppHTTPError, LlamaCppModel, LlamaCppProtocolError
 
 _MISSING = object()
@@ -20,6 +19,7 @@ def _response(payload=_MISSING, *, status_code: int = 200, body: str = "") -> re
     response.encoding = "utf-8"
     response.headers["Content-Type"] = "application/json"
     response._content = (json.dumps(payload) if payload is not _MISSING else body).encode()
+    response._content_consumed = True
     return response
 
 
@@ -50,7 +50,7 @@ def _model(**overrides) -> LlamaCppModel:
     return LlamaCppModel(**config)
 
 
-def test_successful_query_sends_chat_completion_and_preserves_metadata(reset_global_stats):
+def test_successful_query_sends_chat_completion_and_preserves_metadata():
     model = _model()
     response_json = _success()
     messages = [
@@ -73,7 +73,7 @@ def test_successful_query_sends_chat_completion_and_preserves_metadata(reset_glo
     assert payload["messages"] == messages
     assert payload["temperature"] == 0
     assert payload["max_tokens"] == 4096
-    assert payload["stream"] is False
+    assert payload["stream"] is True
 
     assert result["role"] == "assistant"
     assert result["content"] == response_json["choices"][0]["message"]["content"]
@@ -81,10 +81,8 @@ def test_successful_query_sends_chat_completion_and_preserves_metadata(reset_glo
     assert result["extra"]["response"] == response_json
     assert result["extra"]["usage"] == response_json["usage"]
     assert result["extra"]["timings"] == response_json["timings"]
-    assert result["extra"]["cost"] == 0.0
+
     assert started <= result["extra"]["timestamp"] <= time.time()
-    assert GLOBAL_MODEL_STATS.cost == 0.0
-    assert GLOBAL_MODEL_STATS.n_calls == 1
 
 
 def test_missing_choices_is_a_nonretryable_protocol_error():
@@ -220,5 +218,5 @@ git status
     assert extra["response"] == response_json
     assert extra["usage"] == response_json["usage"]
     assert extra["timings"] == response_json["timings"]
-    assert extra["cost"] == 0.0
+
     assert mock_post.call_count == 1

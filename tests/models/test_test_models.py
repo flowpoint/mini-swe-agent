@@ -3,13 +3,12 @@ import time
 
 import pytest
 
-import minisweagent.models
 from minisweagent.exceptions import FormatError
 from minisweagent.models.test_models import DeterministicModel, DeterministicModelConfig, make_output
 
 
-def test_basic_functionality_and_cost_tracking(reset_global_stats):
-    """Test basic model functionality, cost tracking, and sequential output."""
+def test_basic_functionality_and_sequential_output():
+    """Test basic model functionality and sequential output."""
     model = DeterministicModel(
         outputs=[
             make_output("```bash\necho hello", [{"command": "echo hello"}]),
@@ -20,36 +19,26 @@ def test_basic_functionality_and_cost_tracking(reset_global_stats):
     result = model.query([{"role": "user", "content": "test"}])
     assert result["content"] == "```bash\necho hello"
     assert result["extra"]["actions"] == [{"command": "echo hello"}]
-    assert minisweagent.models.GLOBAL_MODEL_STATS.n_calls == 1
-    assert minisweagent.models.GLOBAL_MODEL_STATS.cost == 1.0
 
     result = model.query([{"role": "user", "content": "test"}])
     assert result["content"] == "```bash\necho world"
     assert result["extra"]["actions"] == [{"command": "echo world"}]
-    assert minisweagent.models.GLOBAL_MODEL_STATS.n_calls == 2
-    assert minisweagent.models.GLOBAL_MODEL_STATS.cost == 2.0
 
 
-def test_custom_cost_and_multiple_models(reset_global_stats):
-    model1 = DeterministicModel(outputs=[make_output("one", [])], cost_per_call=2.5)
-    model2 = DeterministicModel(outputs=[make_output("two", [])], cost_per_call=3.0)
+def test_independent_models():
+    model1 = DeterministicModel(outputs=[make_output("one", [])])
+    model2 = DeterministicModel(outputs=[make_output("two", [])])
 
     assert model1.query([{"role": "user", "content": "test"}])["content"] == "one"
-    assert minisweagent.models.GLOBAL_MODEL_STATS.cost == 2.5
 
     assert model2.query([{"role": "user", "content": "test"}])["content"] == "two"
-    assert minisweagent.models.GLOBAL_MODEL_STATS.cost == 5.5
-    assert minisweagent.models.GLOBAL_MODEL_STATS.n_calls == 2
 
 
 def test_config_model():
-    config = DeterministicModelConfig(
-        outputs=[make_output("Test", [{"command": "test"}])], model_name="custom", cost_per_call=5.0
-    )
+    config = DeterministicModelConfig(outputs=[make_output("Test", [{"command": "test"}])], model_name="custom")
 
-    assert config.cost_per_call == 5.0
     assert config.model_name == "custom"
-    assert DeterministicModel(**config.model_dump()).config.cost_per_call == 5.0
+    assert DeterministicModel(**config.model_dump()).config.outputs == config.outputs
 
 
 def test_plain_text_message_formatting():

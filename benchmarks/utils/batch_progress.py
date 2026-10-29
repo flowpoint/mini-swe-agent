@@ -22,8 +22,6 @@ from rich.progress import (
 )
 from rich.table import Table
 
-import minisweagent.models
-
 
 def _shorten_str(s: str, max_len: int, shorten_left=False) -> str:
     if not shorten_left:
@@ -56,7 +54,7 @@ class RunBatchProgressManager:
         self._instances_by_exit_status = collections.defaultdict(list)
         self._main_progress_bar = Progress(
             SpinnerColumn(spinner_name="dots2"),
-            TextColumn("[progress.description]{task.description} (${task.fields[total_cost]})"),
+            TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             MofNCompleteColumn(),
             TaskProgressColumn(),
@@ -75,9 +73,7 @@ class RunBatchProgressManager:
         with one task for each instance.
         """
 
-        self._main_task_id = self._main_progress_bar.add_task(
-            "[cyan]Overall Progress", total=num_instances, total_cost="0.00", eta=""
-        )
+        self._main_task_id = self._main_progress_bar.add_task("[cyan]Overall Progress", total=num_instances, eta="")
 
         self.render_group = Group(self._main_progress_bar, Table(), self._task_progress_bar)
         self._yaml_report_path = yaml_report_path
@@ -114,14 +110,6 @@ class RunBatchProgressManager:
         assert self.render_group is not None
         self.render_group.renderables[1] = t
 
-    def _update_total_costs(self) -> None:
-        with self._lock:
-            self._main_progress_bar.update(
-                self._main_task_id,
-                total_cost=f"{minisweagent.models.GLOBAL_MODEL_STATS.cost:.2f}",
-                eta=self._get_eta_text(),
-            )
-
     def update_instance_status(self, instance_id: str, message: str):
         assert self._task_progress_bar is not None
         assert self._main_progress_bar is not None
@@ -131,7 +119,6 @@ class RunBatchProgressManager:
                 status=_shorten_str(message, 30),
                 instance_id=_shorten_str(instance_id, 35, shorten_left=True),
             )
-        self._update_total_costs()
 
     def on_instance_start(self, instance_id: str):
         with self._lock:
@@ -151,7 +138,6 @@ class RunBatchProgressManager:
                 pass
             self._main_progress_bar.update(TaskID(0), advance=1, eta=self._get_eta_text())
         self.update_exit_status_table()
-        self._update_total_costs()
         if self._yaml_report_path is not None:
             self._save_overview_data_yaml(self._yaml_report_path)
 
@@ -166,7 +152,7 @@ class RunBatchProgressManager:
                 print(f"  {instance}")
 
     def _get_overview_data(self) -> dict:
-        """Get data like exit statuses, total costs, etc."""
+        """Get data like exit statuses"""
         return {
             # convert defaultdict to dict because of serialization
             "instances_by_exit_status": dict(self._instances_by_exit_status),

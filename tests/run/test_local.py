@@ -63,7 +63,7 @@ def test_mini_executes_locally_without_loading_docker(tmp_path: Path):
     assert info["config"]["environment_type"] == "minisweagent.environments.local.LocalEnvironment"
 
 
-def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
+def _make_model_from_fixture(text_outputs: list[str], **kwargs) -> DeterministicModel:
     """Create a DeterministicModel from trajectory fixture data (raw text outputs)."""
 
     def parse_command(text: str) -> list[dict]:
@@ -71,8 +71,7 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         return [{"command": match.group(1)}] if match else []
 
     return DeterministicModel(
-        outputs=[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
-        cost_per_call=cost_per_call,
+        outputs=[make_output(text, parse_command(text)) for text in text_outputs],
         **kwargs,
     )
 
@@ -85,9 +84,7 @@ def test_local_end_to_end(local_test_data):
 
     with (
         patch("minisweagent.run.mini.get_model") as mock_model_class,
-        patch(
-            "minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""
-        ),
+        patch("minisweagent.agents.prompt_user._multiline_prompt_session.prompt", side_effect=lambda *a, **kw: ""),
         patch("builtins.input", return_value=""),  # For LimitsExceeded handling
     ):
         mock_model_class.return_value = _make_model_from_fixture(model_responses)
@@ -97,7 +94,6 @@ def test_local_end_to_end(local_test_data):
             audit_timeout=0,
             task="Blah blah blah",
             output=None,
-            cost_limit=10,
             model_class=None,
             agent_class=None,
         )  # type: ignore

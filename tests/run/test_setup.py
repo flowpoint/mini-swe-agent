@@ -121,7 +121,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert [call[0] for call in calls] == ["GET", "GET", "POST"]
     assert parse_qs(urlsplit(calls[1][1]).query) == {"model": ["test:model"]}
     assert calls[2][0:2] == ("POST", "/llama/v1/chat/completions")
-    assert calls[2][2]["stream"] is False
+    assert calls[2][2]["stream"] is True
     assert calls[2][2]["messages"][0]["role"] == "system"
     assert "exactly one fenced" in calls[2][2]["messages"][0]["content"]
     assert not (tmp_path / "data").exists()
@@ -311,7 +311,9 @@ def test_setup_validates_but_does_not_execute_model_actions(tmp_path: Path, mode
     assert not (tmp_path / "data").exists()
 
 
-@pytest.mark.parametrize(("timeout_args", "timeout"), [([], 3), (["--check-timeout", "0.2"], 0.2)])
+@pytest.mark.parametrize(
+    ("timeout_args", "timeout"), [(["--request-timeout", "0.3"], 0.3), (["--request-timeout", "0.2"], 0.2)]
+)
 def test_setup_chat_test_times_out_without_replacing_config(tmp_path: Path, model_api, timeout_args, timeout):
     url, routes, calls = model_api
     routes["/llama/v1/chat/completions"] = (0, {})

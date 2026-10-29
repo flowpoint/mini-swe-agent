@@ -18,7 +18,7 @@ from minisweagent import package_dir
 from minisweagent.models.test_models import DeterministicModel, make_output
 
 
-def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
+def _make_model_from_fixture(text_outputs: list[str], **kwargs) -> DeterministicModel:
     """Create a DeterministicModel from trajectory fixture data (raw text outputs)."""
 
     def parse_command(text: str) -> list[dict]:
@@ -26,8 +26,7 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         return [{"command": match.group(1)}] if match else []
 
     return DeterministicModel(
-        outputs=[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
-        cost_per_call=cost_per_call,
+        outputs=[make_output(text, parse_command(text)) for text in text_outputs],
         **kwargs,
     )
 
@@ -41,7 +40,7 @@ def test_swebench_end_to_end(github_test_data, tmp_path, workers, container_exec
 
     with patch("benchmarks.swebench.get_model") as mock_get_model:
         # Use side_effect to create a new model instance for each worker
-        mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses, cost_per_call=0.1)
+        mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses)
 
         main(
             subset="_test",
@@ -129,14 +128,13 @@ def test_get_sb_environment_does_not_mutate_shared_config():
     assert mock_docker.call_args.kwargs["image"] == "custom/image:tag"
     assert "image" not in config["environment"]
 
+
 def test_get_sb_environment_rejects_non_docker_environment():
     config = {"environment": {"environment_class": "local"}}
     instance = {"instance_id": "repo1__test1", "image_name": "custom/image:tag"}
 
     with pytest.raises(ValueError, match="only the direct Docker environment"):
         get_sb_environment(config, instance)
-
-
 
 
 def test_filter_instances_no_filters():
@@ -397,7 +395,7 @@ def test_redo_existing_true_overwrites_existing(github_test_data, tmp_path, cont
     preds_file.write_text(json.dumps(existing_data))
 
     with patch("benchmarks.swebench.get_model") as mock_get_model:
-        mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses, cost_per_call=0.1)
+        mock_get_model.side_effect = lambda **kwargs: _make_model_from_fixture(model_responses)
 
         main(
             subset="_test",
@@ -430,7 +428,6 @@ class ExceptionModel:
     def __init__(self, exception_type: type[Exception] = RuntimeError, exception_message: str = "Test exception"):
         self.exception_type = exception_type
         self.exception_message = exception_message
-        self.cost = 0.0
         self.n_calls = 0
         self.config = ExceptionModelConfig()
 
@@ -447,13 +444,12 @@ class ExceptionModel:
         return [self.format_message(role="user", content=str(o)) for o in outputs]
 
     def get_template_vars(self, **kwargs) -> dict:
-        return self.config.model_dump() | {"n_model_calls": self.n_calls, "model_cost": self.cost}
+        return self.config.model_dump() | {"n_model_calls": self.n_calls}
 
     def serialize(self) -> dict:
         return {
             "info": {
                 "model_stats": {
-                    "instance_cost": self.cost,
                     "api_calls": self.n_calls,
                 },
                 "config": {

@@ -2,19 +2,26 @@ import os
 import platform
 import signal
 import subprocess
+import time
 from contextlib import suppress
-from typing import Any
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Any, BinaryIO
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from minisweagent import global_data_dir
 from minisweagent.exceptions import Submitted
 from minisweagent.utils.serialize import recursive_merge
 
 
-class LocalEnvironmentConfig(BaseModel):
+class LocalEnvironmentConfig(BaseModel, extra="forbid"):
     cwd: str = ""
     env: dict[str, str] = {}
-    timeout: int = 30
+    timeout: float | None = Field(default=300, gt=0, allow_inf_nan=False)
+    """Inactivity seconds (output or process-group CPU/I/O); null disables the check."""
+    max_output_bytes: int = Field(default=16384, ge=256)
+    output_dir: Path | None = None
 
 
 class LocalEnvironment:
@@ -22,24 +29,28 @@ class LocalEnvironment:
         """This class executes bash commands directly on the local machine."""
         self.config = config_class(**kwargs)
 
-    def execute(self, action: dict, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
+    def execute(self, action: dict, cwd: str = "", *, timeout: float | None = None) -> dict[str, Any]:
         """Execute a command in the local environment and return the result as a dict."""
         command = action.get("command", "")
         cwd = cwd or self.config.cwd or os.getcwd()
-        try:
-            result = _run(command, cwd, os.environ | self.config.env, timeout or self.config.timeout)
-            output = {"output": result.stdout, "returncode": result.returncode, "exception_info": ""}
-        except Exception as e:
-            raw_output = getattr(e, "output", None)
-            raw_output = (
-                raw_output.decode("utf-8", errors="replace") if isinstance(raw_output, bytes) else (raw_output or "")
-            )
-            output = {
-                "output": raw_output,
-                "returncode": -1,
-                "exception_info": f"An error occurred while executing the command: {e}",
-                "extra": {"exception_type": type(e).__name__, "exception": str(e)},
-            }
+        directory = (self.config.output_dir or global_data_dir / "outputs").resolve()
+        directory.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(dir=directory, prefix="command-", suffix=".log", delete=False) as log:
+            output = {"returncode": -1, "exception_info": "", "extra": {"output_path": log.name}}
+            try:
+                output["returncode"] = _run(
+                    command,
+                    cwd,
+                    os.environ | self.config.env,
+                    self.config.timeout if timeout is None else timeout,
+                    log,
+                )
+            except (OSError, subprocess.TimeoutExpired) as e:
+                output["exception_info"] = (
+                    f"Command inactive: {e}" if isinstance(e, subprocess.TimeoutExpired) else f"Command failed: {e}"
+                )
+                output["extra"].update(exception_type=type(e).__name__, exception=str(e))
+        output["output"] = _read_output(Path(log.name), self.config.max_output_bytes)
         self._check_finished(output)
         return output
 
@@ -52,7 +63,7 @@ class LocalEnvironment:
                 {
                     "role": "exit",
                     "content": submission,
-                    "extra": {"exit_status": "Submitted", "submission": submission},
+                    "extra": {"exit_status": "Submitted", "submission": submission, **output.get("extra", {})},
                 }
             )
 
@@ -70,28 +81,55 @@ class LocalEnvironment:
         }
 
 
-def _run(command: str, cwd: str, env: dict[str, str], timeout: int) -> subprocess.CompletedProcess[str]:
-    """Run a command with Linux bash, killing the process group on timeout or interruption."""
+def _read_output(path: Path, limit: int) -> str:
+    with path.open("rb") as f:
+        head = f.read(limit + 1)
+        if len(head) <= limit:
+            return head.decode("utf-8", errors="replace")
+        f.seek(-(limit // 2), os.SEEK_END)
+        return (
+            head[: limit // 2].decode("utf-8", errors="replace")
+            + f"\n[output truncated; full log: {path}]\n"
+            + f.read(limit // 2).decode("utf-8", errors="replace")
+        )
+
+
+def _activity(group: int) -> dict:
+    """Linux process-group CPU ticks and I/O counters, including quiet children."""
+    activity = {}
+    for path in Path("/proc").glob("[0-9]*"):
+        with suppress(FileNotFoundError, ProcessLookupError, PermissionError):
+            stat = (path / "stat").read_text(errors="replace").rsplit(")", 1)[1].split()
+            if int(stat[2]) == group:
+                activity[path.name] = tuple(stat[11:15])
+                with suppress(PermissionError):
+                    activity[path.name] += ((path / "io").read_text(),)
+    return activity
+
+
+def _run(command: str, cwd: str, env: dict[str, str], timeout: float | None, log: BinaryIO) -> int:
+    """Run until exit or inactivity; kill the process group on interruption/failure."""
     process = subprocess.Popen(
         ["/bin/bash", "-c", command],
-        text=True,
         cwd=cwd,
         env=env,
-        encoding="utf-8",
-        errors="replace",
-        stdout=subprocess.PIPE,
+        stdout=log,
         stderr=subprocess.STDOUT,
         start_new_session=True,
     )
+    previous, last_activity = None, time.monotonic()
     try:
-        stdout, _ = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        stdout, _ = process.communicate()
-        raise subprocess.TimeoutExpired(command, timeout, output=stdout)
-    except KeyboardInterrupt:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.communicate()
-        raise
-    return subprocess.CompletedProcess(command, process.returncode, stdout=stdout)
+        while process.poll() is None:
+            if timeout is not None:
+                current = (os.fstat(log.fileno()).st_size, _activity(process.pid))
+                if current != previous:
+                    previous, last_activity = current, time.monotonic()
+                elif time.monotonic() - last_activity >= timeout:
+                    raise subprocess.TimeoutExpired(command, timeout)
+            time.sleep(min(0.1, timeout / 4) if timeout else 0.1)
+    finally:
+        if process.poll() is None:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    return process.returncode

@@ -87,7 +87,7 @@ def test_default_configs_select_deterministic_llamacpp_text_actions(config_name)
     assert model["model_kwargs"] == {"temperature": 0, "max_tokens": 4096}
     assert model["action_regex"] == r"```bash\s*\n(.*?)\n```"
     assert agent["step_limit"] == 100
-    assert agent["wall_time_limit_seconds"] == 3600
+    assert agent.get("wall_time_limit_seconds", 0) == 0
     assert agent.get("cost_limit", 0) == 0
     prompt = f"{agent['system_template']}\n{agent['instance_template']}".lower()
     assert "exactly one fenced" in prompt

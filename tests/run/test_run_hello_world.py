@@ -6,7 +6,7 @@ from minisweagent.run.hello_world import main
 from tests.conftest import assert_observations_match
 
 
-def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0, **kwargs) -> DeterministicModel:
+def _make_model_from_fixture(text_outputs: list[str], **kwargs) -> DeterministicModel:
     """Create a DeterministicModel from trajectory fixture data (raw text outputs)."""
 
     def parse_command(text: str) -> list[dict]:
@@ -14,8 +14,7 @@ def _make_model_from_fixture(text_outputs: list[str], cost_per_call: float = 1.0
         return [{"command": match.group(1)}] if match else []
 
     return DeterministicModel(
-        outputs=[make_output(text, parse_command(text), cost=cost_per_call) for text in text_outputs],
-        cost_per_call=cost_per_call,
+        outputs=[make_output(text, parse_command(text)) for text in text_outputs],
         **kwargs,
     )
 

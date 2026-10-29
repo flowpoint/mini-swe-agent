@@ -9,7 +9,8 @@ llama.cpp's OpenAI-compatible endpoint is the primary target. Hosted provider en
 ## Design priorities
 
 - Roughly minimize external dependencies, low-value features, lines of code, Python tokens, and complexity, while preserving correctness, robustness, and ease of hacking.
-- Prefer a small, explicit core with visible control flow and state. Validate at boundaries, fail clearly, bound network waits, and keep CLI output terse with meaningful exit statuses.
+- Prefer a small, explicit core with visible control flow and state. Reject unknown config keys, fail clearly, save history atomically, and keep CLI output terse with meaningful exit statuses.
+- Prefer inactivity checks over elapsed-time budgets. Local command liveness includes output and process-group CPU/I/O activity; generation liveness uses response bytes. Keep the short startup probe separate from long-running work.
 - Use medium-level abstractions when they remove repetition or clarify behavior. Exploit Python's language features and standard library, especially `functools`, `itertools`, `contextlib`, `collections`, and `dataclasses`, before adding dependencies.
 - Small local syntax sugar is welcome when it makes code shorter and easier to modify. Keep it inspectable; avoid code golf, hidden magic, deep hierarchies, and speculative frameworks.
 - Keep behavior easy to rewrite, replace, wrap, or override through ordinary functions and small opt-in Python plugins. Prefer explicit inputs and outputs and simple composition over elaborate registries or plugin machinery.
@@ -18,7 +19,7 @@ Keep these extension points easy to customize as needed:
 
 - Sampling and prompt tuning.
 - Per-command auditing through the replaceable `audit(action)` hook. `audit_timeout` is the objection window: 0 proceeds immediately, finite windows proceed if uninterrupted, and infinity requires explicit continuation. Manual review pauses for Ctrl-C; concurrent auditors can send SIGINT. Honor interruptions before execution and stop an active local command on interruption.
-- Context compaction.
+- Context compaction through `DefaultAgent.compact(messages)`: bound model-visible text while preserving the task, corrections, and complete recent turns. Keep the full trajectory and command logs as user data.
 - Response rendering through `InteractiveAgent.render_message`: Markdown and syntax highlighting on terminals, with original text preserved in trajectories and piped output. Keep Rich/Pygments and prompt-toolkit for rendering and editing; avoid adding another display stack.
 
 These guide the design; add abstractions and features only when a concrete use case needs them.

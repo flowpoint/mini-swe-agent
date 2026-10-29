@@ -12,7 +12,7 @@ from minisweagent.exceptions import Submitted
 from minisweagent.utils.serialize import recursive_merge
 
 
-class DockerEnvironmentConfig(BaseModel):
+class DockerEnvironmentConfig(BaseModel, extra="forbid"):
     image: str
     cwd: str = "/"
     """Working directory in which to execute commands."""
