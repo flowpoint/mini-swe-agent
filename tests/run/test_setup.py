@@ -105,6 +105,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     config = yaml.safe_load(path.read_text())
     assert config["model"]["base_url"] == f"{url}/v1"
     assert config["model"]["model_name"] == "test:model"
+    assert config["model"]["verify_ssl"] is True
     assert config["model"]["model_kwargs"] == {"temperature": 0.6, "max_tokens": 1024}
     assert "# top_p: 0.9" in path.read_text()
     assert "#   step_limit: 100" in path.read_text()

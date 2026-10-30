@@ -74,12 +74,13 @@ def main(
     check_timeout: float = DEFAULT_CHECK_TIMEOUT,
     request_timeout: float = 600,
     api_key_env: str | None = None,
+    verify_ssl: bool = True,
 ) -> None:
     path = get_user_config_path()
     if path.exists() and not force:
         raise SystemExit(f"mini setup: {path} already exists; use --force to replace it")
     base_url = normalize_base_url(base_url)
-    with configure_session(requests.Session(), api_key_env) as session:
+    with configure_session(requests.Session(), api_key_env, verify_ssl=verify_ssl) as session:
         models = _get_json(session, f"{base_url}/models", timeout=check_timeout).get("data")
         if (
             not isinstance(models, list)
@@ -128,6 +129,7 @@ def main(
         max_tokens=max_tokens,
         request_timeout=request_timeout,
         api_key_env=api_key_env,
+        verify_ssl=verify_ssl,
     )
     _test_config(content, timeout=check_timeout)
     atomic_write(path, content + "\n", overwrite=force)
@@ -135,6 +137,8 @@ def main(
     print(f"model: {json.dumps(model)}")
     if api_key_env:
         print(f"auth: ${api_key_env}")
+    if not verify_ssl:
+        print("verify_ssl: false")
     print(f"context: {context if context else 'not advertised'}")
     print(f"temperature: {temperature} ({'detected' if 'temperature' in params else 'client default'})")
     print(f"max_tokens: {max_tokens} (client reply limit)")
@@ -166,6 +170,12 @@ def app(argv: list[str] | None = None, *, prog: str = "mini setup") -> int:
     )
     parser.add_argument(
         "--api-key-env", help="Environment variable containing the bearer token (only its name is saved)"
+    )
+    parser.add_argument(
+        "--no-verify-ssl",
+        dest="verify_ssl",
+        action="store_false",
+        help="Skip TLS certificate and hostname verification; save model.verify_ssl=false",
     )
     parser.add_argument("--force", action="store_true", help="Replace an existing config without prompting")
     main(**vars(parser.parse_args(argv)))

@@ -8,6 +8,7 @@ model:
   model_class: llamacpp
   base_url: {{ base_url | tojson }}
   model_name: {{ model | tojson }}
+  verify_ssl: {{ verify_ssl | tojson }}  # TLS certificate/hostname checks; false accepts invalid certificates.
 {% if api_key_env %}
   api_key_env: {{ api_key_env | tojson }}  # Read the bearer token from this environment variable.
 {% else %}

@@ -11,6 +11,7 @@ The model mapping accepts:
 - `base_url` — the OpenAI-compatible API root, normally `http://127.0.0.1:8080/v1`.
 - `request_timeout` — inactivity between response bytes in seconds (default 600); `null` disables it.
 - `connect_timeout` — optional finite connection timeout.
+- `verify_ssl` — TLS certificate and hostname verification (default `true`); set `false` to accept self-signed or otherwise invalid certificates. `mini setup --no-verify-ssl` tests and saves this setting.
 - `api_key_env` — optional environment-variable name holding a bearer token; the token itself is never saved.
 - `model_kwargs` — generation values such as `temperature` and `max_tokens`.
 - `action_regex` — pattern used by the agent to extract exactly one fenced `bash` block.

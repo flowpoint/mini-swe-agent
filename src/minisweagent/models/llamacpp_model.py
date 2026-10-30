@@ -43,9 +43,12 @@ class LlamaCppProtocolError(LlamaCppError):
     """The llama.cpp server returned a malformed successful response."""
 
 
-def configure_session(session: requests.Session, api_key_env: str | None = None) -> requests.Session:
+def configure_session(
+    session: requests.Session, api_key_env: str | None = None, *, verify_ssl: bool = True
+) -> requests.Session:
     """Use only explicitly configured credentials; serialize the variable name, never its value."""
     session.trust_env = False
+    session.verify = verify_ssl
     if api_key_env is not None:
         token = os.environ.get(api_key_env, "")
         if not token or not token.isascii() or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in token):
@@ -63,6 +66,7 @@ class LlamaCppModelConfig(BaseModel, extra="forbid"):
     """Seconds without response bytes; null permits unlimited silence."""
     connect_timeout: float | None = Field(default=10, gt=0, allow_inf_nan=False)
     api_key_env: str | None = Field(default=None, min_length=1)
+    verify_ssl: bool = True
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
     action_regex: str = r"```bash\s*\n(.*?)\n```"
     format_error_template: str = (
@@ -77,7 +81,9 @@ class LlamaCppModelConfig(BaseModel, extra="forbid"):
 class LlamaCppModel:
     def __init__(self, *, session: requests.Session | None = None, **kwargs):
         self.config = LlamaCppModelConfig(**kwargs)
-        self.session = configure_session(session or requests.Session(), self.config.api_key_env)
+        self.session = configure_session(
+            session or requests.Session(), self.config.api_key_env, verify_ssl=self.config.verify_ssl
+        )
         self._api_url = f"{normalize_base_url(self.config.base_url)}/chat/completions"
 
     @property
