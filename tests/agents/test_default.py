@@ -62,7 +62,7 @@ def test_successful_completion(model_factory):
                 ),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -82,7 +82,7 @@ def test_step_limit_enforcement(model_factory):
                 ("Second command", [{"command": "echo 'step2'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**config, "step_limit": 1},
     )
 
@@ -101,7 +101,7 @@ def test_timeout_handling(model_factory):
                 ("Quick finish", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'recovered'"}]),
             ]
         ),
-        env=LocalEnvironment(timeout=1),  # Very short timeout
+        env=LocalEnvironment(language="bash", timeout=1),  # Very short timeout
         **config,
     )
 
@@ -126,7 +126,7 @@ def test_timeout_captures_partial_output(model_factory):
                 ("Quick finish", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'recovered'"}]),
             ]
         ),
-        env=LocalEnvironment(timeout=1),
+        env=LocalEnvironment(language="bash", timeout=1),
         **config,
     )
     info = agent.run("Test timeout with partial output")
@@ -152,7 +152,7 @@ def test_multiple_steps_before_completion(model_factory):
                 ),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -174,7 +174,7 @@ def test_custom_config(model_factory):
                 )
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "system_template": "You are a test assistant.",
@@ -200,7 +200,7 @@ def test_render_template_model_stats(model_factory):
                 ("Test 2", [{"command": "echo 'test2'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -224,7 +224,7 @@ def test_messages_include_timestamps(model_factory):
                 ("Response 2", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'done'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -248,7 +248,7 @@ def test_message_history_tracking(model_factory):
                 ("Response 2", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'done'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -274,7 +274,7 @@ def test_step_adds_messages(model_factory):
     factory, config = model_factory
     agent = DefaultAgent(
         model=factory([("Test command", [{"command": "echo 'hello'"}])]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -303,7 +303,7 @@ def test_observations_captured(model_factory):
                 ("Final", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'done'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -324,7 +324,7 @@ def test_wall_time_limit_enforcement(model_factory):
                 ("Should not run", [{"command": "echo 'unreachable'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**config, "wall_time_limit_seconds": 1},
     )
 
@@ -338,7 +338,7 @@ def test_wall_time_limit_template_vars(model_factory):
     factory, config = model_factory
     agent = DefaultAgent(
         model=factory([("Test", [{"command": "echo 'test'"}])]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**config, "wall_time_limit_seconds": 3600},
     )
     agent.add_messages({"role": "system", "content": "test"}, {"role": "user", "content": "test"})
@@ -357,7 +357,7 @@ def test_empty_actions_handling(model_factory):
                 ("Now with action", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'done'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -389,7 +389,7 @@ def test_repeated_format_errors_terminate_cleanly(default_config):
     outputs = [{"_format_error": True} for _ in range(5)]
     agent = DefaultAgent(
         model=_FlakyTextModel(outputs=outputs),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**default_config, "max_consecutive_format_errors": 2},
     )
     info = agent.run("Test repeated format errors")
@@ -408,7 +408,7 @@ def test_format_error_counter_resets_on_success(default_config):
     outputs = [{"_format_error": True}, good, {"_format_error": True}, submit]
     agent = DefaultAgent(
         model=_FlakyTextModel(outputs=outputs),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**default_config, "max_consecutive_format_errors": 2},
     )
     info = agent.run("Test counter reset")
@@ -434,7 +434,7 @@ def test_format_errors_count_against_step_limit(default_config):
     """Malformed responses still consume model calls."""
     agent = DefaultAgent(
         model=_AlwaysFormatErrorModel(outputs=[]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**default_config, "step_limit": 3, "max_consecutive_format_errors": 0},
     )
 

@@ -1,19 +1,20 @@
 agent:
   system_template: |
-    You are a software engineering assistant running on Linux with access to a local bash shell.
+    You are a software engineering assistant running on Linux with access to a local {{target.language}} interpreter.
 
-    Whenever you want to act, respond with a short explanation followed by exactly one fenced `bash` code block. Put one command or one multi-line shell script in that block. Do not emit multiple bash blocks or use native tool calls.
+    Whenever you want to act, respond with a short explanation followed by exactly one fenced `{{target.language}}` code block containing a complete script. Do not emit multiple action blocks or use native tool calls.
+    {{target.instructions}}
 
     Format the action exactly like this:
-    ```bash
-    command
+    ```{{target.language}}
+    {{target.example}}
     ```
   instance_template: |
     Please solve this issue: {{task}}
 
-    Inspect the repository, make the required changes, and verify them with focused tests. Each action runs in a new shell, so directory and environment changes do not persist unless they are included in the command.
+    Inspect the repository, make the required changes, and verify them with focused tests. Each action runs in a fresh interpreter. Files persist, but variables, imports, directory and environment changes do not persist between actions. Include all required imports and setup in each script.
 
-    When the task is complete, use `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` as the command in your fenced bash block. Do not combine that command with another command.
+    When the task is complete, use `{{target.submit}}` as the entire script in your fenced `{{target.language}}` block.
 
     <system_information>
     {{system}} {{release}} {{version}} {{machine}}
@@ -22,6 +23,7 @@ agent:
   audit_timeout: 0
 
 environment:
+  language: python
   env:
     PAGER: cat
     MANPAGER: cat
@@ -38,7 +40,6 @@ model:
   model_kwargs:
     temperature: 0
     max_tokens: 4096
-  action_regex: '```bash\s*\n(.*?)\n```'
   observation_template: |
     {% if output.exception_info -%}
     <exception>{{output.exception_info}}</exception>
@@ -53,4 +54,4 @@ model:
     {% else -%}
     Format error: {{error}}
     {% endif %}
-    Respond with exactly one fenced `bash` block containing the next command.
+    Respond with exactly one fenced `{{target.language}}` block containing the next script.

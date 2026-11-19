@@ -21,7 +21,7 @@ def history_config(tmp_path: Path) -> Path:
                 "model": {
                     "model_class": "deterministic",
                     "model_name": "deterministic",
-                    "outputs": [make_output("Done", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}])],
+                    "outputs": [make_output("Done", [{"command": "print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')"}])],
                 },
             }
         )

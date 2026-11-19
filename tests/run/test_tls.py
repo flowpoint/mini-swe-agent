@@ -25,7 +25,7 @@ def self_signed_api():
         def reply(self):
             calls.append((self.command, self.path.split("?")[0]))
             if self.command == "POST":
-                body = chat_response("```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```")
+                body = chat_response("```python\nprint('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')\n```")
             else:
                 body = {"data": [{"id": "local"}]} if self.path == "/v1/models" else {}
             self.send_response(200)

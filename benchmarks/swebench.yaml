@@ -25,6 +25,7 @@ agent:
   step_limit: 100
 
 environment:
+  language: bash
   cwd: /testbed
   timeout: 60
   interpreter: ["bash", "-c"]

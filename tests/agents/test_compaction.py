@@ -70,7 +70,7 @@ def test_compaction_hook_controls_model_input_only(tmp_path: Path):
         def compact(self, messages):
             return [{"role": "user", "content": "custom compacted prompt"}]
 
-    model = RecordingModel(outputs=[make_output("done", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}])])
+    model = RecordingModel(outputs=[make_output("done", [{"command": "print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')"}])])
     agent = CustomAgent(
         model, LocalEnvironment(output_dir=tmp_path), system_template="system", instance_template="{{task}}"
     )

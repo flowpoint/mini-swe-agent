@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from minisweagent.agents.default import DefaultAgent
 from minisweagent.config import builtin_config_dir, get_config_from_spec
+from minisweagent.environments.local import LocalEnvironment
+from minisweagent.models.llamacpp_model import LlamaCppModel
 
 _REPO_ROOT = Path(__file__).parent.parent
 
@@ -73,8 +76,11 @@ assert "Run mini-SWE-agent in your local environment." in stdout.getvalue()
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("config_name", ["default.yaml", "mini.yaml"])
-def test_default_configs_select_deterministic_llamacpp_text_actions(config_name):
+@pytest.mark.parametrize(
+    ("config_name", "language"),
+    [(name, language) for name in ("default.yaml", "mini.yaml") for language in ("python", "bash")],
+)
+def test_default_configs_select_deterministic_llamacpp_text_actions(config_name, language):
     config = get_config_from_spec(builtin_config_dir / config_name)
     model = config["model"]
     agent = config["agent"]
@@ -85,10 +91,14 @@ def test_default_configs_select_deterministic_llamacpp_text_actions(config_name)
     assert model["request_timeout"] == 600
     assert model["connect_timeout"] == 10
     assert model["model_kwargs"] == {"temperature": 0, "max_tokens": 4096}
-    assert model["action_regex"] == r"```bash\s*\n(.*?)\n```"
+    assert config["environment"]["language"] == "python"
+    assert model.get("action_regex") is None
     assert agent["step_limit"] == 100
     assert agent.get("wall_time_limit_seconds", 0) == 0
     assert agent.get("cost_limit", 0) == 0
-    prompt = f"{agent['system_template']}\n{agent['instance_template']}".lower()
-    assert "exactly one fenced" in prompt
-    assert "```bash" in prompt
+    adapter = LlamaCppModel(**{key: value for key, value in model.items() if key != "model_class"})
+    with adapter.session:
+        runtime = DefaultAgent(adapter, LocalEnvironment(**(config["environment"] | {"language": language})), **agent)
+        prompt = runtime._render_template(agent["system_template"])
+        assert "exactly one fenced" in prompt and f"```{language}" in prompt
+        assert adapter.parse_actions(prompt, target=runtime.env.target) == [{"command": runtime.env.target.example}]

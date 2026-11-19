@@ -12,9 +12,12 @@ __version__ = "2.4.6"
 
 import os
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from minisweagent.utils.log import logger
+
+if TYPE_CHECKING:
+    from minisweagent.environments.targets import Target
 
 package_dir = Path(__file__).resolve().parent
 
@@ -52,6 +55,9 @@ class Environment(Protocol):
     """Protocol for execution environments."""
 
     config: Any
+
+    @property
+    def target(self) -> "Target": ...
 
     def execute(self, action: dict, cwd: str = "") -> dict[str, Any]: ...
 

@@ -162,7 +162,7 @@ class DefaultAgent:
             )
         messages = self.compact(self.messages)
         self.n_calls += 1
-        message = self.model.query(messages)
+        message = self.model.query(messages, target=self.env.target)
         self.add_messages(message)
         return message
 

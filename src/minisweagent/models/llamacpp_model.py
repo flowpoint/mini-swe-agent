@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 import requests
 from pydantic import BaseModel, Field
 
+from minisweagent.environments.targets import TARGETS, Target
 from minisweagent.exceptions import FormatError
 from minisweagent.models.actions_text import format_observation_messages, parse_regex_actions
 
@@ -68,9 +69,9 @@ class LlamaCppModelConfig(BaseModel, extra="forbid"):
     api_key_env: str | None = Field(default=None, min_length=1)
     verify_ssl: bool = True
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
-    action_regex: str = r"```bash\s*\n(.*?)\n```"
+    action_regex: str | None = None
     format_error_template: str = (
-        "Please always provide EXACTLY ONE action in a fenced bash block, found {{actions|length}} actions."
+        "{{error}} Respond with exactly one fenced {{target.language}} block containing the next action."
     )
     observation_template: str = (
         "{% if output.exception_info %}<exception>{{output.exception_info}}</exception>\n{% endif %}"
@@ -240,7 +241,7 @@ class LlamaCppModel:
         finish_reason = choice.get("finish_reason")
         return message["content"], finish_reason if isinstance(finish_reason, str) else None
 
-    def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
+    def query(self, messages: list[dict[str, str]], *, target: Target = TARGETS["python"], **kwargs) -> dict:
         payload = (
             self.config.model_kwargs
             | kwargs
@@ -260,16 +261,21 @@ class LlamaCppModel:
             "timestamp": time.time(),
         }
         try:
-            actions = parse_regex_actions(
-                content,
-                action_regex=self.config.action_regex,
-                format_error_template=self.config.format_error_template,
-                template_kwargs={"finish_reason": finish_reason},
-            )
+            actions = self.parse_actions(content, target=target, finish_reason=finish_reason)
         except FormatError as e:
             e.messages[0]["extra"].update(extra)
             raise
         return {"role": "assistant", "content": content, "extra": {"actions": actions, **extra}}
+
+    def parse_actions(
+        self, content: str, *, target: Target = TARGETS["python"], finish_reason: str | None = None
+    ) -> list[dict]:
+        return parse_regex_actions(
+            content,
+            action_regex=self.config.action_regex if self.config.action_regex is not None else target.action_regex,
+            format_error_template=self.config.format_error_template,
+            template_kwargs={"finish_reason": finish_reason, "target": target},
+        )
 
     def format_message(self, **kwargs) -> dict:
         if not isinstance(kwargs.get("content"), str):

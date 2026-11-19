@@ -23,7 +23,7 @@ def streaming_api():
         "delay": 0,
         "mode": "complete",
         "token": None,
-        "content": "```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```",
+        "content": "```python\nprint('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')\n```",
     }
     calls, release = [], threading.Event()
 
@@ -135,8 +135,13 @@ def test_silent_or_incomplete_streams_fail_without_replaying_the_request(streami
 @pytest.mark.parametrize(
     ("mode", "content", "code", "status"),
     [
-        ("disconnect", "```bash\ntouch should-not-run\n```", 1, "LlamaCppProtocolError"),
-        ("complete", "no bash action", 4, "RepeatedFormatError"),
+        (
+            "disconnect",
+            "```python\nfrom pathlib import Path; Path('should-not-run').touch()\n```",
+            1,
+            "LlamaCppProtocolError",
+        ),
+        ("complete", "no python action", 4, "RepeatedFormatError"),
     ],
 )
 def test_protocol_failures_have_distinct_exit_codes_and_saved_history(
@@ -166,6 +171,8 @@ def test_protocol_failures_have_distinct_exit_codes_and_saved_history(
         ("agent.audit_timout=3", "audit_timout"),
         ("model.request_timout=1", "request_timout"),
         ("environment.timout=1", "timout"),
+        ("environment.language=typo", "language"),
+        ("environment.interpreter=[]", "interpreter"),
         ("run.taks=test", "taks"),
         ("agnt.step_limit=1", "agnt"),
     ],
@@ -196,7 +203,7 @@ def test_batch_limits_exit_nonzero_with_complete_trajectories(tmp_path: Path, li
                 "model": {
                     "model_class": "deterministic",
                     "model_name": "deterministic",
-                    "outputs": [make_output("test", [{"command": "true"}])],
+                    "outputs": [make_output("test", [{"command": "pass"}])],
                 },
             }
         )
@@ -217,7 +224,16 @@ def test_batch_interrupt_saves_history_and_stops_command_group(tmp_path: Path):
                 "model": {
                     "model_class": "deterministic",
                     "model_name": "deterministic",
-                    "outputs": [make_output("wait", [{"command": "echo $$ > command.pid; printf partial; sleep 60"}])],
+                    "outputs": [
+                        make_output(
+                            "wait",
+                            [
+                                {
+                                    "command": "import os, time; from pathlib import Path; print('partial', end=''); Path('command.pid').write_text(str(os.getpid())); time.sleep(60)"
+                                }
+                            ],
+                        )
+                    ],
                 },
             }
         )

@@ -27,7 +27,7 @@ def test_run_hello_world_end_to_end(local_test_data):
 
     with patch("minisweagent.run.hello_world.LlamaCppModel") as mock_model_class:
         mock_model_class.return_value = _make_model_from_fixture(model_responses)
-        agent = main(task="Blah blah blah", model_name="tardis")
+        agent = main(task="Blah blah blah", model_name="tardis", language="bash")
 
     assert agent is not None
     messages = agent.messages

@@ -11,6 +11,7 @@ from minisweagent import package_dir
 from minisweagent._vendor import yaml
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
+from minisweagent.environments.targets import TARGETS
 from minisweagent.models.llamacpp_model import LlamaCppModel
 
 
@@ -24,6 +25,7 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="llama.cpp model alias (defaults to MSWEA_MODEL_NAME or local)",
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8080/v1", help="llama.cpp OpenAI API root")
+    parser.add_argument("--language", choices=TARGETS, default="python", help="Action language (default: %(default)s)")
     return parser
 
 
@@ -31,6 +33,7 @@ def main(
     task: str | None = None,
     model_name: str | None = None,
     base_url: str = "http://127.0.0.1:8080/v1",
+    language: str = "python",
 ) -> DefaultAgent:
     if task is None:
         task = input("Task/problem statement: ")
@@ -43,7 +46,7 @@ def main(
             base_url=base_url,
             model_kwargs={"temperature": 0, "max_tokens": 4096},
         ),
-        LocalEnvironment(),
+        LocalEnvironment(language=language),
         **yaml.safe_load(Path(package_dir / "config" / "default.yaml").read_text())["agent"],
     )
     agent.run(task)

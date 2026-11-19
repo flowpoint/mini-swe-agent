@@ -36,10 +36,12 @@ model:
 #   code_theme: ansi_dark  # Code colors: ansi_dark, ansi_light, or a Pygments theme name.
 #   step_limit: 100  # Maximum model calls per run; 0 disables this limit.
 #   max_context_chars: 65536  # Text budget, not tokens; retain task, corrections and recent turns. Override compact() to customize.
-#   max_consecutive_format_errors: 3  # Stop after repeated malformed Bash actions.
+#   max_consecutive_format_errors: 3  # Stop after repeated malformed actions.
 
-# environment:  # Commands run where mini runs; start mini inside your container for isolation.
-#   cwd: /path/to/project  # Working directory for shell commands; defaults to the current directory.
-#   timeout: 300  # Seconds without output or process-group CPU/I/O activity; null disables.
-#   max_output_bytes: 16384  # Head/tail excerpt for the model; full logs are kept beside the trajectory.
-#   output_dir: /path/to/logs  # Override the command-log directory.
+environment:  # Actions run where mini runs; start mini inside your container for isolation.
+  language: {{ language }}  # python or bash; every action starts a fresh interpreter.
+  # interpreter: ["/path/to/venv/bin/python", "-u", "-c"]  # Python defaults to mini's interpreter, unbuffered.
+  # cwd: /path/to/project  # Working directory for actions; defaults to the current directory.
+  # timeout: 300  # Seconds without output or process-group CPU/I/O activity; null disables.
+  # max_output_bytes: 16384  # Head/tail excerpt for the model; full logs are kept beside the trajectory.
+  # output_dir: /path/to/logs  # Override the command-log directory.

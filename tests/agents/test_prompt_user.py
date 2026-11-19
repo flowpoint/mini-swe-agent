@@ -79,8 +79,8 @@ with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOut
     task = _multiline_prompt()
     agent = InteractiveAgent(
         DeterministicModel(outputs=[
-            make_output('Interrupt', [{'command': 'kill -INT "$PPID"'}]),
-            make_output('Finish', [{'command': 'echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'}]),
+            make_output('Interrupt', [{'command': 'import os, signal; os.kill(os.getppid(), signal.SIGINT)'}]),
+            make_output('Finish', [{'command': 'print("COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT")'}]),
         ]),
         LocalEnvironment(), system_template='Test', instance_template='{{task}}', confirm_exit=False,
     )
@@ -91,10 +91,10 @@ with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOut
 
     pipe.send_text('/audit inf\rDo not run this command\x07')
     with pytest.raises(UserInterruption) as rejected:
-        agent.confirm_action({'command': 'touch forbidden'})
+        agent.confirm_action({'command': 'from pathlib import Path; Path("forbidden").touch()'})
     assert agent.config.audit_timeout == 0
     pipe.send_text('\x07')
-    agent.confirm_action({'command': 'touch allowed'})
+    agent.confirm_action({'command': 'from pathlib import Path; Path("allowed").touch()'})
 
     agent.config.confirm_exit = True
     submission = Submitted({'role': 'exit', 'content': 'done'})
@@ -104,6 +104,11 @@ with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOut
     pipe.send_text('\x07')
     with pytest.raises(Submitted):
         agent._check_for_new_task_or_submit(submission)
+    agent.config.mode = 'human'
+    pipe.send_text('for i in range(2):\r    print(i)\x07')
+    manual = agent.query()
+    assert manual['content'] == 'User command: \n```python\nfor i in range(2):\n    print(i)\n```'
+    assert agent.execute_actions(manual)[0]['extra']['raw_output'] == '0\n1\n'
     print('\n' + json.dumps([task, interruption, rejected.value.messages[0]['content'], followup.value.messages[0]['content']]))
 """,
         ],

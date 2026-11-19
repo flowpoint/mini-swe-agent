@@ -58,7 +58,7 @@ def test_default_yolo_executes_without_confirmation(tmp_path: Path):
                 ("Finish", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
             ]
         ),
-        env=LocalEnvironment(cwd=str(tmp_path)),
+        env=LocalEnvironment(language="bash", cwd=str(tmp_path)),
         system_template="Test agent",
         instance_template="{{task}}",
         confirm_exit=False,
@@ -79,7 +79,7 @@ def test_successful_completion_with_confirmation(model_factory):
                     ("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'completed'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -106,7 +106,7 @@ def test_action_rejection_and_recovery(model_factory):
                     ("Second try", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'recovered'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -135,7 +135,7 @@ def test_yolo_mode_activation(model_factory):
                     ("Test command", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'yolo works'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -162,7 +162,7 @@ def test_help_command(model_factory):
                         ("Test help", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'help shown'"}]),
                     ]
                 ),
-                env=LocalEnvironment(),
+                env=LocalEnvironment(language="bash"),
                 **config,
             )
 
@@ -187,7 +187,7 @@ def test_whitelisted_actions_skip_confirmation(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "whitelist_actions": [r"echo.*"],
@@ -213,7 +213,7 @@ def _test_interruption_helper(
                 ),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
 
@@ -288,7 +288,7 @@ def test_multiple_confirmations_and_commands(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -312,7 +312,7 @@ def test_non_whitelisted_action_requires_confirmation(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "whitelist_actions": [r"ls.*"],  # Only ls commands whitelisted
@@ -339,7 +339,7 @@ def test_human_mode_basic_functionality(model_factory):
     ):
         agent = InteractiveAgent(
             model=factory([]),  # LM shouldn't be called in human mode
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "mode": "human",
@@ -372,7 +372,7 @@ def test_human_mode_switch_to_yolo(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "mode": "human",
@@ -405,7 +405,7 @@ def test_human_mode_switch_to_confirm(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "mode": "human",
@@ -436,7 +436,7 @@ def test_confirmation_mode_switch_to_human_with_rejection(model_factory):
                     ("Recovery action", [{"command": "echo 'recovery'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": float("inf"),
@@ -470,7 +470,7 @@ def test_confirmation_mode_switch_to_yolo_and_continue(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": float("inf"),
@@ -496,7 +496,7 @@ def test_mode_switch_during_keyboard_interrupt(model_factory):
                 ),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "audit_timeout": float("inf"),
@@ -550,7 +550,7 @@ def test_already_in_mode_behavior(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": float("inf"),
@@ -583,7 +583,7 @@ def test_all_mode_transitions_yolo_to_others(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": 0,
@@ -622,7 +622,7 @@ def test_all_mode_transitions_confirm_to_human(model_factory):
     ):
         agent = InteractiveAgent(
             model=factory([("LM action", [{"command": "echo 'rejected action'"}])]),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": float("inf"),
@@ -656,7 +656,7 @@ def test_help_command_from_different_contexts(model_factory):
                         ),
                     ]
                 ),
-                env=LocalEnvironment(),
+                env=LocalEnvironment(language="bash"),
                 **{
                     **config,
                     "audit_timeout": float("inf"),
@@ -684,7 +684,7 @@ def test_help_command_from_human_mode(model_factory):
         with patch("minisweagent.agents.interactive.console.print") as mock_print:
             agent = InteractiveAgent(
                 model=factory([]),  # LM shouldn't be called
-                env=LocalEnvironment(),
+                env=LocalEnvironment(language="bash"),
                 **{
                     **config,
                     "mode": "human",
@@ -710,7 +710,7 @@ def test_complex_mode_switching_sequence(model_factory):
                 ("Action 3", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'final action'"}]),
             ]
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "audit_timeout": float("inf"),
@@ -766,7 +766,7 @@ def test_limits_exceeded_with_user_continuation(model_factory):
                 ),
             ],
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "step_limit": 1,
@@ -806,7 +806,7 @@ def test_limits_exceeded_multiple_times_with_continuation(model_factory):
                 ),
             ],
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "step_limit": 1,  # Will be exceeded after first step
@@ -836,7 +836,7 @@ def test_limits_exceeded_non_interactive_stops_cleanly(model_factory):
         model=factory(
             [("Step 1", [{"command": "echo 'first step'"}])],
         ),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "step_limit": 1,
@@ -859,7 +859,7 @@ def test_time_exceeded_never_prompts(model_factory):
     factory, config = model_factory
     agent = InteractiveAgent(
         model=factory([("Step 1", [{"command": "echo 'first step'"}])]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{**config, "step_limit": 10, "wall_time_limit_seconds": 1, "audit_timeout": 0},
     )
     agent._start_time = 0  # force the wall-clock budget to be already exhausted
@@ -896,7 +896,7 @@ def test_continue_after_completion_with_new_task(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -929,7 +929,7 @@ def test_continue_after_completion_without_new_task(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -963,7 +963,7 @@ def test_continue_after_completion_multiple_cycles(model_factory):
                     ("Third", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'third completed'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **config,
         )
 
@@ -997,7 +997,7 @@ def test_continue_after_completion_in_yolo_mode(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "audit_timeout": 0,  # Start in yolo mode
@@ -1024,7 +1024,7 @@ def test_confirm_exit_enabled_asks_for_confirmation(model_factory):
                     ("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'completed'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "confirm_exit": True,  # Should ask for confirmation
@@ -1047,7 +1047,7 @@ def test_confirm_exit_disabled_exits_immediately(model_factory):
                     ("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'completed'"}]),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "confirm_exit": False,  # Should NOT ask for confirmation
@@ -1081,7 +1081,7 @@ def test_confirm_exit_with_new_task_continues_execution(model_factory):
                     ),
                 ]
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{
                 **config,
                 "confirm_exit": True,
@@ -1102,7 +1102,7 @@ def test_confirm_exit_config_field_defaults(model_factory):
     factory, config = model_factory
     agent = InteractiveAgent(
         model=factory([]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **config,
     )
     # Default should be True
@@ -1114,7 +1114,7 @@ def test_confirm_exit_config_field_can_be_set(model_factory):
     factory, config = model_factory
     agent_with_confirm = InteractiveAgent(
         model=factory([]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "confirm_exit": True,
@@ -1124,7 +1124,7 @@ def test_confirm_exit_config_field_can_be_set(model_factory):
 
     agent_without_confirm = InteractiveAgent(
         model=factory([]),
-        env=LocalEnvironment(),
+        env=LocalEnvironment(language="bash"),
         **{
             **config,
             "confirm_exit": False,
@@ -1150,7 +1150,7 @@ def test_submission_help_then_human_mode(model_factory):
                 model=factory(
                     [("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'initial'"}])],
                 ),
-                env=LocalEnvironment(),
+                env=LocalEnvironment(language="bash"),
                 **{**config, "audit_timeout": 0},
             )
             info = agent.run("Solve the issue")
@@ -1172,7 +1172,7 @@ def test_submission_empty_message_quits(model_factory):
             model=factory(
                 [("Finishing", [{"command": "echo 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT'\necho 'completed'"}])],
             ),
-            env=LocalEnvironment(),
+            env=LocalEnvironment(language="bash"),
             **{**config, "audit_timeout": 0},
         )
         info = agent.run("Solve the issue")

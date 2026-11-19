@@ -11,11 +11,14 @@ from typing import Any, BinaryIO
 from pydantic import BaseModel, Field
 
 from minisweagent import global_data_dir
+from minisweagent.environments.targets import TARGETS, Target, TargetName
 from minisweagent.exceptions import Submitted
 from minisweagent.utils.serialize import recursive_merge
 
 
 class LocalEnvironmentConfig(BaseModel, extra="forbid"):
+    language: TargetName = "python"
+    interpreter: list[str] | None = Field(default=None, min_length=1)
     cwd: str = ""
     env: dict[str, str] = {}
     timeout: float | None = Field(default=300, gt=0, allow_inf_nan=False)
@@ -26,8 +29,16 @@ class LocalEnvironmentConfig(BaseModel, extra="forbid"):
 
 class LocalEnvironment:
     def __init__(self, *, config_class: type = LocalEnvironmentConfig, **kwargs):
-        """This class executes bash commands directly on the local machine."""
+        """Execute each action in a fresh local interpreter."""
         self.config = config_class(**kwargs)
+
+    @property
+    def target(self) -> Target:
+        return TARGETS[self.config.language]
+
+    @property
+    def interpreter(self) -> list[str]:
+        return self.config.interpreter if self.config.interpreter is not None else list(self.target.interpreter)
 
     def execute(self, action: dict, cwd: str = "", *, timeout: float | None = None) -> dict[str, Any]:
         """Execute a command in the local environment and return the result as a dict."""
@@ -39,7 +50,7 @@ class LocalEnvironment:
             output = {"returncode": -1, "exception_info": "", "extra": {"output_path": log.name}}
             try:
                 output["returncode"] = _run(
-                    command,
+                    [*self.interpreter, command],
                     cwd,
                     os.environ | self.config.env,
                     self.config.timeout if timeout is None else timeout,
@@ -68,13 +79,15 @@ class LocalEnvironment:
             )
 
     def get_template_vars(self, **kwargs) -> dict[str, Any]:
-        return recursive_merge(self.config.model_dump(), platform.uname()._asdict(), os.environ, kwargs)
+        return recursive_merge(
+            self.config.model_dump(), platform.uname()._asdict(), os.environ, {"target": self.target}, kwargs
+        )
 
     def serialize(self) -> dict:
         return {
             "info": {
                 "config": {
-                    "environment": self.config.model_dump(mode="json"),
+                    "environment": self.config.model_dump(mode="json") | {"interpreter": self.interpreter},
                     "environment_type": f"{self.__class__.__module__}.{self.__class__.__name__}",
                 }
             }
@@ -107,10 +120,10 @@ def _activity(group: int) -> dict:
     return activity
 
 
-def _run(command: str, cwd: str, env: dict[str, str], timeout: float | None, log: BinaryIO) -> int:
+def _run(argv: list[str], cwd: str, env: dict[str, str], timeout: float | None, log: BinaryIO) -> int:
     """Run until exit or inactivity; kill the process group on interruption/failure."""
     process = subprocess.Popen(
-        ["/bin/bash", "-c", command],
+        argv,
         cwd=cwd,
         env=env,
         stdout=log,
@@ -125,7 +138,7 @@ def _run(command: str, cwd: str, env: dict[str, str], timeout: float | None, log
                 if current != previous:
                     previous, last_activity = current, time.monotonic()
                 elif time.monotonic() - last_activity >= timeout:
-                    raise subprocess.TimeoutExpired(command, timeout)
+                    raise subprocess.TimeoutExpired(argv, timeout)
             time.sleep(min(0.1, timeout / 4) if timeout else 0.1)
     finally:
         if process.poll() is None:

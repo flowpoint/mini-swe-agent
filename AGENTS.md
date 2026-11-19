@@ -4,7 +4,7 @@ mini-SWE-agent is a minimal, hacky, hackable, robust, terse Python CLI tool for 
 
 llama.cpp's OpenAI-compatible endpoint is the primary target. Hosted provider endpoints are secondary; keep their dependencies and special cases optional and out of the core loop.
 
-`mini` executes commands in its own environment. For Docker isolation, run the whole CLI inside a container managed externally. Docker orchestration belongs only to the checkout-only SWE-bench runners in `benchmarks/`, which import the installed core and are excluded from wheels and source distributions.
+`mini` executes Python scripts in its own environment, starting a fresh, unbuffered interpreter for every action. Files persist; variables, imports, and cwd/environment changes do not persist between actions. `environments/targets.py` holds language details shared by prompting, parsing, and execution; Bash is an explicit compatibility target. For Docker isolation, run the whole CLI inside a container managed externally. Docker orchestration belongs only to the checkout-only SWE-bench runners in `benchmarks/`, which import the installed core and are excluded from wheels and source distributions.
 
 ## Design priorities
 

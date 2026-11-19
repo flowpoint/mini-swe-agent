@@ -6,13 +6,15 @@ import subprocess
 import uuid
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from minisweagent.environments.targets import TARGETS, Target, TargetName
 from minisweagent.exceptions import Submitted
 from minisweagent.utils.serialize import recursive_merge
 
 
 class DockerEnvironmentConfig(BaseModel, extra="forbid"):
+    language: TargetName = "bash"
     image: str
     cwd: str = "/"
     """Working directory in which to execute commands."""
@@ -35,8 +37,8 @@ class DockerEnvironmentConfig(BaseModel, extra="forbid"):
     """Max duration to keep container running. Uses the same format as the sleep command."""
     pull_timeout: int = 120
     """Timeout in seconds for pulling images."""
-    interpreter: list[str] = ["bash", "-lc"]
-    """Interpreter to use to execute commands. Default is ["bash", "-lc"].
+    interpreter: list[str] | None = Field(default=None, min_length=1)
+    """Optional interpreter override; defaults to the selected language inside the container.
     The actual command will be appended as argument to this. Override this to e.g., modify shell flags
     (e.g., to remove the `-l` flag to disable login shell) or to use python instead of bash to interpret commands.
     """
@@ -58,14 +60,24 @@ class DockerEnvironment:
         self.config = config_class(**kwargs)
         self._start_container()
 
+    @property
+    def target(self) -> Target:
+        return TARGETS[self.config.language]
+
+    @property
+    def interpreter(self) -> list[str]:
+        if self.config.interpreter is not None:
+            return self.config.interpreter
+        return ["python", *self.target.interpreter[1:]] if self.target.language == "python" else ["bash", "-lc"]
+
     def get_template_vars(self, **kwargs) -> dict[str, Any]:
-        return recursive_merge(self.config.model_dump(), platform.uname()._asdict(), kwargs)
+        return recursive_merge(self.config.model_dump(), platform.uname()._asdict(), {"target": self.target}, kwargs)
 
     def serialize(self) -> dict:
         return {
             "info": {
                 "config": {
-                    "environment": self.config.model_dump(mode="json"),
+                    "environment": self.config.model_dump(mode="json") | {"interpreter": self.interpreter},
                     "environment_type": f"{self.__class__.__module__}.{self.__class__.__name__}",
                 }
             }
@@ -98,7 +110,9 @@ class DockerEnvironment:
         self.logger.info(f"Started container {container_name} with ID {result.stdout.strip()}")
         self.container_id = result.stdout.strip()
 
-    def execute(self, action: dict, cwd: str = "", *, timeout: int | None = None) -> dict[str, Any]:
+    def execute(
+        self, action: dict, cwd: str = "", *, timeout: int | None = None, interpreter: list[str] | None = None
+    ) -> dict[str, Any]:
         """Execute a command in the Docker container and return the result as a dict."""
         command = action.get("command", "")
         cwd = cwd or self.config.cwd
@@ -110,7 +124,7 @@ class DockerEnvironment:
                 cmd.extend(["-e", f"{key}={value}"])
         for key, value in self.config.env.items():
             cmd.extend(["-e", f"{key}={value}"])
-        cmd.extend([self.container_id, *self.config.interpreter, command])
+        cmd.extend([self.container_id, *(self.interpreter if interpreter is None else interpreter), command])
 
         try:
             result = subprocess.run(

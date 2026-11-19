@@ -26,7 +26,9 @@ def test_each_command_waits_then_runs_without_input():
             audit_timeout=timeout,
         )
         started = time.monotonic()
-        messages = agent.execute_actions(make_output("Run", [{"command": "echo first"}, {"command": "echo second"}]))
+        messages = agent.execute_actions(
+            make_output("Run", [{"command": "print('first')"}, {"command": "print('second')"}])
+        )
         assert time.monotonic() - started >= 2 * timeout
         assert "first" in messages[0]["content"]
         assert "second" in messages[1]["content"]
@@ -90,7 +92,11 @@ def wait_for_audit(process: subprocess.Popen):
     ("response", "error"), [("reject this command\x07", "UserInterruption"), (None, "KeyboardInterrupt")]
 )
 def test_infinite_audit_requires_continuation_for_each_command(tmp_path: Path, response: str | None, error: str):
-    with running_agent(tmp_path, "inf", ["echo first > first.txt", "echo second > second.txt"]) as process:
+    with running_agent(
+        tmp_path,
+        "inf",
+        [f"from pathlib import Path; Path('{name}.txt').write_text('{name}\\n')" for name in ("first", "second")],
+    ) as process:
         wait_for_audit(process)
         with pytest.raises(subprocess.TimeoutExpired):
             process.wait(timeout=0.05)
@@ -116,7 +122,7 @@ def test_infinite_audit_requires_continuation_for_each_command(tmp_path: Path, r
 
 
 def test_external_interrupt_vetoes_finite_audit(tmp_path: Path):
-    with running_agent(tmp_path, "5", ["touch forbidden"]) as process:
+    with running_agent(tmp_path, "5", ["from pathlib import Path; Path('forbidden').touch()"]) as process:
         wait_for_audit(process)
         process.send_signal(signal.SIGINT)
         _, stderr = process.communicate(timeout=5)
@@ -126,7 +132,13 @@ def test_external_interrupt_vetoes_finite_audit(tmp_path: Path):
 
 
 def test_external_interrupt_stops_running_local_command_at_zero_timeout(tmp_path: Path):
-    with running_agent(tmp_path, "0", ["echo $$ > process.tmp; mv process.tmp running.pid; exec sleep 30"]) as process:
+    with running_agent(
+        tmp_path,
+        "0",
+        [
+            "import os, time; from pathlib import Path; Path('process.tmp').write_text(str(os.getpid())); Path('process.tmp').rename('running.pid'); time.sleep(30)"
+        ],
+    ) as process:
         deadline = time.monotonic() + 5
         while not (tmp_path / "running.pid").exists() and time.monotonic() < deadline:
             time.sleep(0.01)

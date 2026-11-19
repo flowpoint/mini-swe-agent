@@ -18,6 +18,7 @@ from minisweagent import global_data_dir
 from minisweagent.agents import get_agent
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
 from minisweagent.environments.local import LocalEnvironment
+from minisweagent.environments.targets import TARGETS
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
 from minisweagent.run import nonnegative_float, positive_float, setup
@@ -80,6 +81,7 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument("-m", "--model", dest="model_name", help="Model to use")
     parser.add_argument("--model-class", help="Model class to use (supported: 'llamacpp')")
+    parser.add_argument("--language", choices=TARGETS, help="Action language (default: config, otherwise python)")
     parser.add_argument(
         "--check-timeout",
         type=positive_float,
@@ -122,6 +124,7 @@ def main(
     output: Path | None = DEFAULT_OUTPUT_FILE,
     exit_immediately: bool = False,
     check_timeout: float = DEFAULT_CHECK_TIMEOUT,
+    language: str | None = None,
 ) -> Any:
     # Build the config from the command line arguments
     if config_spec is None:
@@ -147,6 +150,7 @@ def main(
                 "model_class": model_class or UNSET,
                 "model_name": model_name or UNSET,
             },
+            "environment": {"language": language if language is not None else UNSET},
         }
     )
     config = recursive_merge(*configs)

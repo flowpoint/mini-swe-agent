@@ -17,9 +17,9 @@ def parse_regex_actions(
     ``{"finish_reason": ...}`` so a template can report a ``max_tokens`` truncation -- which shows
     up here as zero parsed actions -- instead of a generic format error).
     """
-    actions = [a.strip() for a in re.findall(action_regex, content, re.DOTALL)]
-    if len(actions) != 1:
-        error_msg = f"Expected exactly 1 action, found {len(actions)}."
+    actions = re.findall(action_regex, content, re.DOTALL)
+    if len(actions) != 1 or not actions[0].strip():
+        error_msg = f"Expected exactly 1 nonempty action, found {len(actions)}."
         raise FormatError(
             {
                 "role": "user",

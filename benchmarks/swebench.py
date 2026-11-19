@@ -98,7 +98,7 @@ def get_sb_environment(config: dict, instance: dict) -> Environment:
     env = DockerEnvironment(**env_config)
     if startup_command := config.get("run", {}).get("env_startup_command"):
         startup_command = Template(startup_command, undefined=StrictUndefined).render(**instance)
-        out = env.execute({"command": startup_command})
+        out = env.execute({"command": startup_command}, interpreter=["bash", "-lc"])
         if out["returncode"] != 0:
             raise RuntimeError(f"Error executing startup command: {out}")
     return env

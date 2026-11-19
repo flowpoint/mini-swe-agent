@@ -73,7 +73,7 @@ class InteractiveAgent(DefaultAgent):
             if not _is_audit_command(command):
                 msg = {
                     "role": "user",
-                    "content": f"User command: \n```bash\n{command}\n```",
+                    "content": f"User command: \n```{self.env.target.language}\n{command}\n```",
                     "extra": {"actions": [{"command": command}]},
                 }
                 self.add_messages(msg)

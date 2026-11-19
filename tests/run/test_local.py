@@ -23,9 +23,14 @@ def test_mini_executes_locally_without_loading_docker(tmp_path: Path):
                     "model_name": "deterministic",
                     "outputs": [
                         make_output(
-                            "Write", [{"command": 'printf "%s\\n" "$MINI_TEST_VALUE" > result.txt; pwd >> result.txt'}]
+                            "Write",
+                            [
+                                {
+                                    "command": "import os; from pathlib import Path; Path('result.txt').write_text(os.environ['MINI_TEST_VALUE'] + '\\n' + str(Path.cwd()) + '\\n')"
+                                }
+                            ],
                         ),
-                        make_output("Done", [{"command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}]),
+                        make_output("Done", [{"command": "print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')"}]),
                     ],
                 },
                 "environment": {
@@ -91,6 +96,7 @@ def test_local_end_to_end(local_test_data):
         agent = main(
             model_name="tardis",
             config_spec=[str(DEFAULT_CONFIG_FILE)],
+            language="bash",
             audit_timeout=0,
             task="Blah blah blah",
             output=None,

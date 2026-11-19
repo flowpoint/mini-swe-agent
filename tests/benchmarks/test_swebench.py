@@ -114,7 +114,7 @@ def test_get_sb_environment_runs_startup_command_as_dict():
     with patch("benchmarks.swebench.DockerEnvironment", return_value=fake_env):
         get_sb_environment(config, instance)
 
-    fake_env.execute.assert_called_once_with({"command": "echo repo1__test1"})
+    fake_env.execute.assert_called_once_with({"command": "echo repo1__test1"}, interpreter=["bash", "-lc"])
 
 
 def test_get_sb_environment_does_not_mutate_shared_config():

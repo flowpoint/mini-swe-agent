@@ -38,7 +38,7 @@ def model_api(request):
         ),
         "/llama/v1/chat/completions": (
             200,
-            chat_response("```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```"),
+            chat_response("```python\nprint('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')\n```"),
         ),
     }
     routes = {path.replace("/llama", prefix, 1): response for path, response in routes.items()}
@@ -106,6 +106,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert config["model"]["base_url"] == f"{url}/v1"
     assert config["model"]["model_name"] == "test:model"
     assert config["model"]["verify_ssl"] is True
+    assert config["environment"]["language"] == "python"
     assert config["model"]["model_kwargs"] == {"temperature": 0.6, "max_tokens": 1024}
     assert "# top_p: 0.9" in path.read_text()
     assert "#   step_limit: 100" in path.read_text()
@@ -116,7 +117,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
         "context: 2048",
         "temperature: 0.6 (detected)",
         "max_tokens: 1024 (client reply limit)",
-        "tested: chat completion and Bash action format",
+        "tested: python interpreter, chat completion and action format",
         f"wrote: {path}",
     ]
     assert [call[0] for call in calls] == ["GET", "GET", "POST"]
@@ -125,6 +126,9 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert calls[2][2]["stream"] is True
     assert calls[2][2]["messages"][0]["role"] == "system"
     assert "exactly one fenced" in calls[2][2]["messages"][0]["content"]
+    assert "```python" in calls[2][2]["messages"][0]["content"]
+    assert "{{" not in calls[2][2]["messages"][0]["content"]
+    assert "target" not in calls[2][2]
     assert not (tmp_path / "data").exists()
 
     result = run_cli(tmp_path, "-t", "Finish immediately", "--exit-immediately")
@@ -276,9 +280,11 @@ def test_failed_detection_does_not_replace_config(tmp_path: Path, model_api, rou
         (200, {"choices": []}, True, "choices"),
         (200, chat_response(""), False, "FormatError"),
         (200, chat_response("Just plain text"), True, "FormatError"),
-        (200, chat_response("```bash\n\n```"), True, "empty Bash action"),
-        (200, chat_response("```bash\necho one\n```\n```bash\necho two\n```"), True, "FormatError"),
-        (200, chat_response("```bash\necho setup-ok\n```", "length"), False, "truncated"),
+        (200, chat_response("```python\n\n```"), True, "FormatError"),
+        (200, chat_response("```bash\necho setup-ok\n```"), False, "FormatError"),
+        (200, chat_response("```python\nif True print('bad')\n```"), True, "SyntaxError"),
+        (200, chat_response("```python\nprint('one')\n```\n```python\nprint('two')\n```"), True, "FormatError"),
+        (200, chat_response("```python\nprint('setup-ok')\n```", "length"), False, "truncated"),
     ],
 )
 def test_failed_chat_test_does_not_write_config(tmp_path: Path, model_api, status, body, existing, error):
@@ -303,13 +309,72 @@ def test_failed_chat_test_does_not_write_config(tmp_path: Path, model_api, statu
 def test_setup_validates_but_does_not_execute_model_actions(tmp_path: Path, model_api):
     url, routes, _ = model_api
     marker = tmp_path / "must-not-exist"
-    routes["/llama/v1/chat/completions"] = (200, chat_response(f"```bash\ntouch {marker}\n```"))
+    routes["/llama/v1/chat/completions"] = (
+        200,
+        chat_response(f"```python\nfrom pathlib import Path; Path({str(marker)!r}).touch()\n```"),
+    )
     result = run_cli(tmp_path, "setup", "--base-url", url)
     assert result.returncode == 0, result.stderr
-    assert "tested: chat completion and Bash action format" in result.stdout
+    assert "tested: python interpreter, chat completion and action format" in result.stdout
     assert (tmp_path / "config/mini-swe-agent/mini.yaml").is_file()
     assert not marker.exists()
     assert not (tmp_path / "data").exists()
+
+
+def test_setup_bash_compatibility_and_cli_language_override(tmp_path: Path, model_api):
+    url, routes, calls = model_api
+    routes["/llama/v1/chat/completions"] = (
+        200,
+        chat_response("```bash\necho COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n```"),
+    )
+    result = run_cli(tmp_path, "setup", "--base-url", url, "--language", "bash")
+    assert result.returncode == 0, result.stderr
+    assert "tested: bash interpreter" in result.stdout
+    assert (
+        yaml.safe_load((tmp_path / "config/mini-swe-agent/mini.yaml").read_text())["environment"]["language"] == "bash"
+    )
+    assert "```bash" in calls[-1][2]["messages"][0]["content"]
+    assert run_cli(tmp_path, "-t", "finish", "--exit-immediately").returncode == 0
+    routes["/llama/v1/chat/completions"] = (
+        200,
+        chat_response("```python\nprint('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')\n```"),
+    )
+    result = run_cli(tmp_path, "--language", "python", "-t", "finish", "--exit-immediately")
+    assert result.returncode == 0, result.stderr
+    assert "```python" in calls[-1][2]["messages"][0]["content"]
+    saved = json.loads((tmp_path / "data/mini-swe-agent/trajectories/latest.traj.json").read_text())
+    assert saved["info"]["exit_status"] == "Submitted"
+    assert saved["info"]["config"]["environment"]["language"] == "python"
+
+
+def test_python_cli_runs_multiple_fresh_actions_with_full_history(tmp_path: Path, model_api):
+    url, routes, calls = model_api
+    source = """import os, json
+from pathlib import Path
+if Path('first.json').exists():
+    assert 'first_only' not in globals()
+    previous_pid = json.loads(Path('first.json').read_text())
+    assert previous_pid != os.getpid()
+    print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+    print('fresh')
+else:
+    first_only = True
+    Path('first.json').write_text(json.dumps(os.getpid()))
+    print('first')"""
+    routes["/llama/v1/chat/completions"] = (200, chat_response(f"```python\n{source}\n```"))
+    assert run_cli(tmp_path, "setup", "--base-url", url).returncode == 0
+    assert not (tmp_path / "first.json").exists()
+    result = run_cli(tmp_path, "-t", "run twice", "--exit-immediately")
+    assert result.returncode == 0, result.stderr
+    saved = json.loads((tmp_path / "data/mini-swe-agent/trajectories/latest.traj.json").read_text())
+    assert saved["info"]["exit_status"] == "Submitted" and saved["info"]["submission"] == "fresh\n"
+    assert saved["info"]["model_stats"]["api_calls"] == 2
+    assert [message["extra"]["actions"] for message in saved["messages"] if message["role"] == "assistant"] == [
+        [{"command": source}],
+        [{"command": source}],
+    ]
+    assert "<output>\nfirst" in calls[-1][2]["messages"][-1]["content"]
+    assert all("target" not in call[2] for call in calls if call[0] == "POST")
 
 
 @pytest.mark.parametrize(
