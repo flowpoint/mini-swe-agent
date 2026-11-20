@@ -19,7 +19,7 @@ agent:
     <system_information>
     {{system}} {{release}} {{version}} {{machine}}
     </system_information>
-  step_limit: 100
+  step_limit: 0
 
 environment:
   language: python

@@ -21,7 +21,7 @@ from minisweagent.environments.local import LocalEnvironment
 from minisweagent.environments.targets import TARGETS
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
-from minisweagent.run import nonnegative_float, positive_float, setup
+from minisweagent.run import nonnegative_float, nonnegative_int, positive_float, setup
 from minisweagent.utils.serialize import UNSET, recursive_merge
 
 DEFAULT_CONFIG_FILE = builtin_config_dir / "mini.yaml"
@@ -94,6 +94,11 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument("-t", "--task", help="Task/problem statement")
     parser.add_argument(
+        "--step-limit",
+        type=nonnegative_int,
+        help="Maximum model calls (default: config, otherwise unlimited; 0 means unlimited)",
+    )
+    parser.add_argument(
         "--audit-timeout",
         type=nonnegative_float,
         help="Audit seconds per command (default: 0; inf waits for continuation)",
@@ -125,6 +130,7 @@ def main(
     exit_immediately: bool = False,
     check_timeout: float = DEFAULT_CHECK_TIMEOUT,
     language: str | None = None,
+    step_limit: int | None = None,
 ) -> Any:
     # Build the config from the command line arguments
     if config_spec is None:
@@ -144,6 +150,7 @@ def main(
             "agent": {
                 "agent_class": agent_class or UNSET,
                 "audit_timeout": audit_timeout if audit_timeout is not None else UNSET,
+                "step_limit": step_limit if step_limit is not None else UNSET,
                 "output_path": output or UNSET,
             },
             "model": {

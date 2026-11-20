@@ -109,7 +109,7 @@ def test_setup_detects_settings_and_default_run_uses_them(tmp_path: Path, model_
     assert config["environment"]["language"] == "python"
     assert config["model"]["model_kwargs"] == {"temperature": 0.6, "max_tokens": 1024}
     assert "# top_p: 0.9" in path.read_text()
-    assert "#   step_limit: 100" in path.read_text()
+    assert "#   step_limit: 0" in path.read_text()
     assert "#   audit_timeout: 0" in path.read_text()
     assert result.stdout.splitlines() == [
         f"api: {url}/v1",

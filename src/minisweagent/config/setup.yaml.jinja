@@ -34,7 +34,7 @@ model:
 #   mode: agent  # agent: sample commands from the model; human: enter commands yourself.
 #   confirm_exit: true  # Ask for another task when the model finishes.
 #   code_theme: ansi_dark  # Code colors: ansi_dark, ansi_light, or a Pygments theme name.
-#   step_limit: 100  # Maximum model calls per run; 0 disables this limit.
+#   step_limit: 0  # Maximum model calls per run; 0 means unlimited. Override with --step-limit N.
 #   max_context_chars: 65536  # Text budget, not tokens; retain task, corrections and recent turns. Override compact() to customize.
 #   max_consecutive_format_errors: 3  # Stop after repeated malformed actions.
 

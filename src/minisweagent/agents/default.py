@@ -33,8 +33,8 @@ class AgentConfig(BaseModel, extra="forbid"):
     """Template for the system message (the first message)."""
     instance_template: str
     """Template for the first user message specifying the task (the second message overall)."""
-    step_limit: int = 0
-    """Maximum number of steps the agent can take."""
+    step_limit: int = Field(default=0, ge=0)
+    """Maximum number of model calls; 0 means unlimited."""
     max_context_chars: int = Field(default=65536, gt=0)
     """Bound model-visible text; the full trajectory remains saved. Override compact() to customize."""
     wall_time_limit_seconds: int = 0

@@ -22,7 +22,7 @@ agent:
     3. In a final action, run exactly `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt`.
 
     Do not perform any further work after the final action.
-  step_limit: 100
+  step_limit: 0
 
 environment:
   language: bash

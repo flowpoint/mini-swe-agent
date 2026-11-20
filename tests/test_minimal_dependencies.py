@@ -93,7 +93,7 @@ def test_default_configs_select_deterministic_llamacpp_text_actions(config_name,
     assert model["model_kwargs"] == {"temperature": 0, "max_tokens": 4096}
     assert config["environment"]["language"] == "python"
     assert model.get("action_regex") is None
-    assert agent["step_limit"] == 100
+    assert agent["step_limit"] == 0
     assert agent.get("wall_time_limit_seconds", 0) == 0
     assert agent.get("cost_limit", 0) == 0
     adapter = LlamaCppModel(**{key: value for key, value in model.items() if key != "model_class"})

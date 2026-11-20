@@ -169,6 +169,7 @@ def test_protocol_failures_have_distinct_exit_codes_and_saved_history(
     ("override", "error"),
     [
         ("agent.audit_timout=3", "audit_timout"),
+        ("agent.step_limit=-1", "step_limit"),
         ("model.request_timout=1", "request_timout"),
         ("environment.timout=1", "timout"),
         ("environment.language=typo", "language"),
@@ -186,9 +187,19 @@ def test_config_typos_fail_before_network_or_trajectory_creation(tmp_path: Path,
 
 
 @pytest.mark.parametrize(
-    ("limit", "task", "status"), [(1, "test", "LimitsExceeded"), (100, "x" * 300, "ContextLimitExceeded")]
+    ("limit", "args", "task", "status", "calls"),
+    [
+        (None, [], "test", "Submitted", 2),
+        (1, [], "test", "LimitsExceeded", 1),
+        (2, ["--step-limit", "1"], "test", "LimitsExceeded", 1),
+        (1, ["--step-limit", "2"], "test", "Submitted", 2),
+        (1, ["--step-limit", "0"], "test", "Submitted", 2),
+        (0, [], "x" * 300, "ContextLimitExceeded", 0),
+    ],
 )
-def test_batch_limits_exit_nonzero_with_complete_trajectories(tmp_path: Path, limit: int, task: str, status: str):
+def test_batch_limits_and_cli_overrides_save_complete_trajectories(
+    tmp_path: Path, limit: int | None, args: list[str], task: str, status: str, calls: int
+):
     config = tmp_path / "config.yaml"
     config.write_text(
         json.dumps(
@@ -197,22 +208,28 @@ def test_batch_limits_exit_nonzero_with_complete_trajectories(tmp_path: Path, li
                     "agent_class": "default",
                     "system_template": "test",
                     "instance_template": "{{task}}",
-                    "step_limit": limit,
+                    **({"step_limit": limit} if limit is not None else {}),
                     "max_context_chars": 250,
                 },
                 "model": {
                     "model_class": "deterministic",
                     "model_name": "deterministic",
-                    "outputs": [make_output("test", [{"command": "pass"}])],
+                    "outputs": [
+                        make_output("test", [{"command": "pass"}]),
+                        make_output("done", [{"command": "print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')"}]),
+                    ],
                 },
             }
         )
     )
-    result = run_cli(tmp_path, "-c", str(config), "-t", task, "--exit-immediately")
-    assert result.returncode == 3, result.stderr
+    result = run_cli(tmp_path, "-c", str(config), "-t", task, "--exit-immediately", *args)
+    assert result.returncode == (0 if status == "Submitted" else 3), result.stderr
     latest = tmp_path / "data/mini-swe-agent/trajectories/latest.traj.json"
     assert latest.is_symlink()
-    assert json.loads(latest.read_text())["info"]["exit_status"] == status
+    info = json.loads(latest.read_text())["info"]
+    assert info["exit_status"] == status
+    assert info["model_stats"]["api_calls"] == calls
+    assert info["config"]["agent"]["step_limit"] == (int(args[-1]) if args else limit or 0)
 
 
 def test_batch_interrupt_saves_history_and_stops_command_group(tmp_path: Path):
