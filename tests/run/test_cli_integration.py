@@ -384,7 +384,7 @@ def test_mini_rejects_environment_selection(capsys):
         ("local", ["environment.environment_class=docker"]),
     ],
 )
-def test_mini_rejects_nonlocal_config_before_loading_model(
+def test_mini_rejects_unsupported_environment_before_loading_model(
     tmp_path: Path, environment_class: str, overrides: list[str]
 ):
     config = tmp_path / "agent.yaml"
@@ -392,7 +392,7 @@ def test_mini_rejects_nonlocal_config_before_loading_model(
         f"environment:\n  environment_class: {environment_class}\n"
         "model:\n  model_name: unused\n  model_class: unavailable\n"
     )
-    with pytest.raises(SystemExit, match="run mini itself inside your container"):
+    with pytest.raises(ValueError, match="Unknown environment type: .*Available: local, podman"):
         main(config_spec=[str(config), *overrides], output=tmp_path / "trajectory.json")
     assert not (tmp_path / "trajectory.json").exists()
 

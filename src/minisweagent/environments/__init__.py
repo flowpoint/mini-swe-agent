@@ -7,6 +7,7 @@ from minisweagent import Environment
 
 _ENVIRONMENT_MAPPING = {
     "local": "minisweagent.environments.local.LocalEnvironment",
+    "podman": "minisweagent.environments.podman.PodmanEnvironment",
 }
 
 

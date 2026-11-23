@@ -17,7 +17,8 @@ from rich.console import Console
 from minisweagent import global_data_dir
 from minisweagent.agents import get_agent
 from minisweagent.config import builtin_config_dir, get_config_from_spec, get_user_config_path
-from minisweagent.environments.local import LocalEnvironment
+from minisweagent.environments import get_environment
+from minisweagent.environments.podman import PodmanEnvironment
 from minisweagent.environments.targets import TARGETS
 from minisweagent.models import get_model
 from minisweagent.models.llamacpp_model import DEFAULT_CHECK_TIMEOUT, LlamaCppModel
@@ -30,7 +31,7 @@ DEFAULT_OUTPUT_FILE = global_data_dir / "trajectories" / "latest.traj.json"
 
 _HELP_TEXT = """Run mini-SWE-agent in your local environment.
 
-Commands run in the same environment as mini. For container isolation, run mini inside the container.
+Actions run locally by default. Use --sandbox for offline Podman execution, or --ask-network for per-script network approval.
 
 Create a config before running: mini setup
 For a remote server: mini setup --base-url http://host:8080/v1
@@ -82,6 +83,22 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("-m", "--model", dest="model_name", help="Model to use")
     parser.add_argument("--model-class", help="Model class to use (supported: 'llamacpp')")
     parser.add_argument("--language", choices=TARGETS, help="Action language (default: config, otherwise python)")
+    sandbox = parser.add_mutually_exclusive_group()
+    sandbox.add_argument(
+        "--sandbox",
+        dest="sandbox",
+        action="store_const",
+        const="none",
+        help="Run actions in fresh offline Podman containers; requires a local --sandbox-image",
+    )
+    sandbox.add_argument(
+        "--ask-network",
+        dest="sandbox",
+        action="store_const",
+        const="ask",
+        help="Podman sandbox; scripts starting with '# network: reason' require a typed yes to enable network once",
+    )
+    parser.add_argument("--sandbox-image", help="Existing local image for sandbox actions; images are never pulled")
     parser.add_argument(
         "--check-timeout",
         type=positive_float,
@@ -131,6 +148,8 @@ def main(
     check_timeout: float = DEFAULT_CHECK_TIMEOUT,
     language: str | None = None,
     step_limit: int | None = None,
+    sandbox: str | None = None,
+    sandbox_image: str | None = None,
 ) -> Any:
     # Build the config from the command line arguments
     if config_spec is None:
@@ -157,7 +176,12 @@ def main(
                 "model_class": model_class or UNSET,
                 "model_name": model_name or UNSET,
             },
-            "environment": {"language": language if language is not None else UNSET},
+            "environment": {
+                "language": language if language is not None else UNSET,
+                "environment_class": "podman" if sandbox is not None or sandbox_image is not None else UNSET,
+                "network": sandbox if sandbox is not None else UNSET,
+                "image": sandbox_image if sandbox_image is not None else UNSET,
+            },
         }
     )
     config = recursive_merge(*configs)
@@ -172,9 +196,11 @@ def main(
         raise ValueError("run.task must be text")
 
     environment_config = config.get("environment", {})
-    if environment_config.pop("environment_class", "local") != "local":
-        raise SystemExit("mini: only local execution is supported; run mini itself inside your container")
-    env = LocalEnvironment(**environment_config)
+    if environment_config.get("environment_class") == "podman" and not environment_config.get("image"):
+        raise SystemExit(
+            "mini: sandbox requires --sandbox-image IMAGE or environment.image; preload the image explicitly"
+        )
+    env = get_environment(environment_config, default_type="local")
     model = get_model(config=config.get("model", {}))
     agent = get_agent(model, env, config.get("agent", {}), default_type="interactive")
     if exit_immediately and hasattr(agent.config, "confirm_exit"):
@@ -190,6 +216,9 @@ def main(
         agent.config.output_path = _new_output_file()
     if env.config.output_dir is None and agent.config.output_path:
         env.config.output_dir = agent.config.output_path.with_suffix(".outputs")
+    if isinstance(env, PodmanEnvironment):
+        env.check_output_path(agent.config.output_path)
+        env.check_output_path(env.config.output_dir)
     if output == DEFAULT_OUTPUT_FILE:
         output_path = agent.config.output_path
         agent.save(output_path)

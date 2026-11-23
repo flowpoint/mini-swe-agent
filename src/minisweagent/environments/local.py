@@ -3,6 +3,7 @@ import platform
 import signal
 import subprocess
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -42,17 +43,28 @@ class LocalEnvironment:
 
     def execute(self, action: dict, cwd: str = "", *, timeout: float | None = None) -> dict[str, Any]:
         """Execute a command in the local environment and return the result as a dict."""
-        command = action.get("command", "")
+        return self._execute(action.get("command", ""), cwd, timeout, self._run_action, {})
+
+    def _run_action(self, command: str, cwd: str, timeout: float | None, log: BinaryIO) -> int:
+        return _run([*self.interpreter, command], cwd, os.environ | self.config.env, timeout, log)
+
+    def _execute(
+        self,
+        command: str,
+        cwd: str,
+        timeout: float | None,
+        runner: Callable[[str, str, float | None, BinaryIO], int],
+        extra: dict,
+    ) -> dict[str, Any]:
         cwd = cwd or self.config.cwd or os.getcwd()
         directory = (self.config.output_dir or global_data_dir / "outputs").resolve()
         directory.mkdir(parents=True, exist_ok=True)
         with NamedTemporaryFile(dir=directory, prefix="command-", suffix=".log", delete=False) as log:
-            output = {"returncode": -1, "exception_info": "", "extra": {"output_path": log.name}}
+            output = {"returncode": -1, "exception_info": "", "extra": {"output_path": log.name, **extra}}
             try:
-                output["returncode"] = _run(
-                    [*self.interpreter, command],
+                output["returncode"] = runner(
+                    command,
                     cwd,
-                    os.environ | self.config.env,
                     self.config.timeout if timeout is None else timeout,
                     log,
                 )
@@ -107,25 +119,37 @@ def _read_output(path: Path, limit: int) -> str:
         )
 
 
-def _activity(group: int) -> dict:
+def _activity(group: int, *, namespace: int | None = None) -> dict:
     """Linux process-group CPU ticks and I/O counters, including quiet children."""
     activity = {}
     for path in Path("/proc").glob("[0-9]*"):
         with suppress(FileNotFoundError, ProcessLookupError, PermissionError):
             stat = (path / "stat").read_text(errors="replace").rsplit(")", 1)[1].split()
-            if int(stat[2]) == group:
+            if (namespace is None and int(stat[2]) == group) or (
+                namespace is not None and (path / "ns/pid").stat().st_ino == namespace
+            ):
                 activity[path.name] = tuple(stat[11:15])
                 with suppress(PermissionError):
                     activity[path.name] += ((path / "io").read_text(),)
     return activity
 
 
-def _run(argv: list[str], cwd: str, env: dict[str, str], timeout: float | None, log: BinaryIO) -> int:
+def _run(
+    argv: list[str],
+    cwd: str,
+    env: dict[str, str],
+    timeout: float | None,
+    log: BinaryIO,
+    *,
+    activity: Callable[[], dict] | None = None,
+    stdin: int | None = None,
+) -> int:
     """Run until exit or inactivity; kill the process group on interruption/failure."""
     process = subprocess.Popen(
         argv,
         cwd=cwd,
         env=env,
+        stdin=stdin,
         stdout=log,
         stderr=subprocess.STDOUT,
         start_new_session=True,
@@ -134,7 +158,7 @@ def _run(argv: list[str], cwd: str, env: dict[str, str], timeout: float | None, 
     try:
         while process.poll() is None:
             if timeout is not None:
-                current = (os.fstat(log.fileno()).st_size, _activity(process.pid))
+                current = (os.fstat(log.fileno()).st_size, _activity(process.pid), activity() if activity else None)
                 if current != previous:
                     previous, last_activity = current, time.monotonic()
                 elif time.monotonic() - last_activity >= timeout:
