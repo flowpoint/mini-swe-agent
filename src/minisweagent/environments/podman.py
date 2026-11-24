@@ -30,6 +30,7 @@ class SandboxError(RuntimeError):
 class PodmanEnvironmentConfig(LocalEnvironmentConfig):
     image: str = Field(min_length=1)
     network: Literal["none", "ask"] = "none"
+    offline_prompt: bool = True
 
 
 def _socket_profile(profile: dict) -> dict:
@@ -169,6 +170,8 @@ class PodmanEnvironment(LocalEnvironment):
             if self.config.network == "ask"
             else "Networking is disabled, including network requests declared by a script."
         )
+        if self.config.network == "none" and self.config.offline_prompt:
+            instructions += " Use only local resources; do not run anything that requires internet access."
         return replace(super().target, instructions=super().target.instructions + " " + instructions)
 
     def get_template_vars(self, **kwargs) -> dict:

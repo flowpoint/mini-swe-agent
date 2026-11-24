@@ -48,3 +48,4 @@ environment:  # Actions run locally unless the Podman sandbox is enabled.
   # environment_class: podman  # --sandbox enables offline containers; --ask-network enables per-script requests.
   # image: localhost/agent-workspace:latest  # Must already exist locally; mini never pulls images.
   # network: none  # Podman: none or ask. '# network: reason' requests one script's access; ask requires typed yes.
+  # offline_prompt: true  # Podman network:none: tell the model to avoid internet-dependent operations; --no-offline-prompt disables.

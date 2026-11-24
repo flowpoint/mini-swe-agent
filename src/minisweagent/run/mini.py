@@ -100,6 +100,12 @@ def _build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument("--sandbox-image", help="Existing local image for sandbox actions; images are never pulled")
     parser.add_argument(
+        "--offline-prompt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Tell the model to avoid internet-dependent operations in the offline Podman sandbox (default: enabled)",
+    )
+    parser.add_argument(
         "--check-timeout",
         type=positive_float,
         default=DEFAULT_CHECK_TIMEOUT,
@@ -150,6 +156,7 @@ def main(
     step_limit: int | None = None,
     sandbox: str | None = None,
     sandbox_image: str | None = None,
+    offline_prompt: bool | None = None,
 ) -> Any:
     # Build the config from the command line arguments
     if config_spec is None:
@@ -181,6 +188,7 @@ def main(
                 "environment_class": "podman" if sandbox is not None or sandbox_image is not None else UNSET,
                 "network": sandbox if sandbox is not None else UNSET,
                 "image": sandbox_image if sandbox_image is not None else UNSET,
+                "offline_prompt": offline_prompt if offline_prompt is not None else UNSET,
             },
         }
     )
@@ -196,6 +204,8 @@ def main(
         raise ValueError("run.task must be text")
 
     environment_config = config.get("environment", {})
+    if offline_prompt is not None and environment_config.get("environment_class") != "podman":
+        raise SystemExit("mini: --offline-prompt/--no-offline-prompt requires a Podman sandbox")
     if environment_config.get("environment_class") == "podman" and not environment_config.get("image"):
         raise SystemExit(
             "mini: sandbox requires --sandbox-image IMAGE or environment.image; preload the image explicitly"
